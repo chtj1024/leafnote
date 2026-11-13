@@ -41,7 +41,7 @@ npm start
 - If you have unsaved changes, you can choose Save, Don't save, or Cancel.
 - The full path of the open file is shown under its name. Rename files in Explorer or use Save as.
 - Existing files are updated in place rather than replaced, so desktop icon positions and file attributes are kept.
-- The light/dark toggle is in the top right. Only the theme choice is stored in the browser.
+- The light/dark toggle is in the top right. Theme and editor font size are remembered in the browser.
 
 **Conflict protection:** if the file is changed by another window or program, Leafnote will not overwrite it. Use **Save as** to keep your version, then reopen the original. If the original is deleted or moved, Leafnote will not silently recreate it.
 
@@ -49,6 +49,7 @@ npm start
 
 ## Editing
 
+- Use the font-size selector in the toolbar to change the editor text size (10–36 px). Headings, tables, code, and Markdown view scale with it. The setting is remembered across windows and does not change file contents.
 - Type `/` in an empty block to insert text, headings, lists, checklists, quotes, code, dividers, or tables.
 - Drag the handle on the left of a block to reorder it, or click it to change the block type.
 - Bold `Ctrl+B`, italic `Ctrl+I`, underline `Ctrl+U`, and strikethrough.

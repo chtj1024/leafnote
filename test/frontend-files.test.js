@@ -1,14 +1,15 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-function editor(){
+function editor(preferences={}){
+  const settings=new Map(Object.entries(preferences));
   const elements=new Map();
-  function element(){return {value:'',textContent:'',innerHTML:'',hidden:true,style:{},dataset:{},classList:{toggle(){},remove(){}},addEventListener(){},querySelectorAll(){return []},append(){}};}
-  const document={body:element(),querySelectorAll(){return []},querySelector(){return null},addEventListener(){},getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id)},createTextNode(textContent){return {textContent}},createElement:element};
-  const context=vm.createContext({document,window:{Markdown:require('../public/markdown'),addEventListener(){},history:{replaceState(){}}},crypto,TextEncoder,TextDecoder,localStorage:{getItem(){return null},setItem(){}},setTimeout(){return 0},clearTimeout(){},fetch(){return new Promise(()=>{})},URLSearchParams,location:{search:''}});
+  function element(){return {value:'',textContent:'',innerHTML:'',hidden:true,style:{setProperty(name,value){this[name]=value;}},dataset:{},classList:{toggle(){},remove(){}},addEventListener(){},querySelectorAll(){return []},append(){}};}
+  const document={documentElement:element(),body:element(),querySelectorAll(){return []},querySelector(){return null},addEventListener(){},getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id)},createTextNode(textContent){return {textContent}},createElement:element};
+  const context=vm.createContext({document,window:{Markdown:require('../public/markdown'),addEventListener(){},history:{replaceState(){}}},crypto,TextEncoder,TextDecoder,localStorage:{getItem(key){return settings.get(key)??null},setItem(key,value){settings.set(key,value)}},setTimeout(){return 0},clearTimeout(){},fetch(){return new Promise(()=>{})},URLSearchParams,location:{search:''}});
   const source=fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8');
   vm.runInContext(source.slice(0,source.lastIndexOf('safe(async()=>{')),context);
   vm.runInContext("active={id:'p',title:'파일.md',revision:1,path:'original.md'};sourceMode=true;dirty=true;",context);
-  return {context,elements,run:code=>vm.runInContext(code,context)};
+  return {context,elements,settings,run:code=>vm.runInContext(code,context)};
 }
 test('untouched source including textarea CRLF normalization is never rewritten',async()=>{
   const e=editor();e.context.capture=()=>{throw Error('untouched file must not be written')};
@@ -53,4 +54,23 @@ test('cancelling open keeps the current document and accepted files use server s
 test('failed saves keep the current document and dirty state',async()=>{
   const e=editor();e.run("$('source').value='보관할 변경';api=async()=>{throw new Error('conflict')};");
   await assert.rejects(e.run('flush()'),/conflict/);assert.equal(e.run('dirty'),true);assert.equal(e.run("$('source').value"),'보관할 변경');
+});
+
+test('editor font size is restored across launches and never changes document contents or save state',()=>{
+  const e=editor({'leafnote.fontSize':'20'});
+  assert.equal(e.run("document.documentElement.style['--editor-font-size']"),'20px');
+  assert.equal(e.elements.get('fontSize').value,'20');
+  e.run("dirty=false;generation=0;lastSavedMarkdown='문서 원문';setFontSize(24);");
+  assert.equal(e.settings.get('leafnote.fontSize'),'24');
+  assert.equal(e.run('dirty'),false);assert.equal(e.run('generation'),0);assert.equal(e.run('lastSavedMarkdown'),'문서 원문');
+  const reopened=editor(Object.fromEntries(e.settings));
+  assert.equal(reopened.run("document.documentElement.style['--editor-font-size']"),'24px');
+});
+
+test('invalid font preferences use the default and cross-window updates do not write back',()=>{
+  for(const value of ['url(https://example.org)','1000','NaN','-1']){
+    const e=editor({'leafnote.fontSize':value});
+    assert.equal(e.run("document.documentElement.style['--editor-font-size']"),'14px');
+    e.run('setFontSize(18,false)');assert.equal(e.settings.get('leafnote.fontSize'),value);
+  }
 });

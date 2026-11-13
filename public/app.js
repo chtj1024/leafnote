@@ -576,6 +576,18 @@ $('cancelLeave').onclick=()=>leaveChoice('cancel');
 $('discardLeave').onclick=()=>leaveChoice('discard');
 $('saveLeave').onclick=()=>leaveChoice('save');
 $('unsavedDialog').addEventListener('cancel',e=>{e.preventDefault();leaveChoice('cancel');});
+const FONT_SIZES = [10,12,14,16,18,20,22,24,28,32,36];
+function setFontSize(value, persist = true) {
+  const requested = Number(value), size = FONT_SIZES.includes(requested) ? requested : 14;
+  document.documentElement.style.setProperty('--editor-font-size',size+'px');
+  $('fontSize').value = String(size);
+  if (persist) { try { localStorage.setItem('leafnote.fontSize',String(size)); } catch {} }
+}
+let savedFontSize = 14;
+try { savedFontSize = localStorage.getItem('leafnote.fontSize') || 14; } catch {}
+setFontSize(savedFontSize,false);
+$('fontSize').addEventListener('change',e=>{closePopups();setFontSize(e.target.value);});
+window.addEventListener('storage',e=>{if(e.key==='leafnote.fontSize')setFontSize(e.newValue,false);});
 function setTheme(dark){document.body.classList.toggle('dark',dark);$('themeButton').innerHTML=icon(dark?'sun':'moon')+(dark?'라이트 모드':'다크 모드');localStorage.setItem('leafnote.dark',dark?'1':'0');}
 setTheme(localStorage.getItem('leafnote.dark')==='1');$('themeButton').onclick=()=>setTheme(!document.body.classList.contains('dark'));
 document.addEventListener('pointerdown',e=>{
