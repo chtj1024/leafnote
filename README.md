@@ -102,3 +102,7 @@ npm test
 ## Contributing
 
 Issues and pull requests are welcome. If you find Leafnote useful, a ⭐ on the repository helps others find it.
+
+## License
+
+[MIT](LICENSE)

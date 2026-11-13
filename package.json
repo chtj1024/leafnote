@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Offline block editor with local Markdown files",
+  "license": "MIT",
   "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
   "engines": { "node": ">=18" }
 }
