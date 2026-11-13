@@ -59,6 +59,8 @@ npm start
 
 ## Open `.md` files with Leafnote (Windows)
 
+When the server is already running, `Leafnote.exe` opens files directly without starting PowerShell for each file. When the server is stopped, the launcher uses the existing `launch.ps1` startup procedure.
+
 Right-click a `.md` file → **Open with → Choose another app → Choose an app on your PC**, then select `Leafnote.exe` in this folder. The file opens and is edited directly.
 
 - `register-md.cmd`: registers Leafnote as an "Open with" option for the current user and opens Windows Default Apps settings.
