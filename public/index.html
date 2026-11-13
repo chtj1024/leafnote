@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Leafnote</title><link rel="icon" href="/icon.svg"><link rel="stylesheet" href="/style.css"><script defer src="/markdown.js"></script><script defer src="/app.js"></script></head>
+<body>
+<main>
+  <header class="topbar">
+    <div class="brand"><img src="/icon.svg" alt=""><span>Leafnote</span></div>
+    <div class="file-actions"><button id="newFile" title="새 문서 (Ctrl+N)"><span data-icon="plus"></span><span>새 문서</span></button><button id="openFile" title="열기 (Ctrl+O)"><span data-icon="folder"></span><span>열기</span></button><button id="saveFile" title="저장 (Ctrl+S)"><span data-icon="download"></span><span>저장</span></button></div>
+    <div class="top-actions"><span id="saveStatus" role="status"><i></i>새 문서</span><button id="themeButton" title="라이트·다크 모드 전환"></button><button id="moreButton" class="icon-button" aria-label="파일 메뉴" title="파일 메뉴"><span data-icon="more"></span></button></div>
+  </header>
+  <div id="loading">문서를 여는 중…</div>
+  <div id="documentScroll" hidden>
+    <article id="document">
+      <h1 id="fileTitle">제목 없는 문서</h1>
+      <div class="file-meta"><span id="filePath">저장할 위치를 선택해주세요.</span><span id="wordCount"></span></div>
+      <div class="editor-toolbar"><div class="format-tools"><button data-format="bold" title="굵게 (Ctrl+B)" aria-label="굵게"><b>B</b></button><button data-format="italic" title="기울임 (Ctrl+I)" aria-label="기울임"><i>I</i></button><button data-format="strikeThrough" title="취소선" aria-label="취소선"><s>S</s></button><button data-format="underline" title="밑줄 (Ctrl+U)" aria-label="밑줄"><u>U</u></button><button id="highlightButton" title="형광펜 강조색" aria-label="강조색"><span class="highlight-letter">A</span></button></div><button id="sourceToggle"><span data-icon="code"></span><span>마크다운 보기</span></button></div>
+      <div id="editor" role="group" aria-label="블록 편집기"></div>
+      <textarea id="source" aria-label="마크다운 원문" spellcheck="false" hidden></textarea>
+
+    </article>
+  </div>
+</main>
+<div id="fileMenu" class="popup file-menu" hidden><button id="saveAsButton"><span data-icon="copy"></span>다른 이름으로 저장<kbd>Ctrl Shift S</kbd></button></div>
+<div id="blockMenu" class="popup block-menu" role="menu" aria-label="블록 종류" hidden><div class="menu-caption">무엇을 적어볼까요?</div><div id="blockOptions"></div><div class="menu-hint">↑ ↓ 선택 <span>Enter 추가 · Esc 닫기</span></div></div>
+<div id="highlightMenu" class="popup highlight-menu" aria-label="강조색 선택" hidden><div class="menu-caption">형광펜 강조색</div><div id="highlightOptions"></div></div>
+<div id="selectionToolbar" class="popup selection-toolbar" role="toolbar" aria-label="선택한 글자 강조색" hidden></div>
+
+<dialog id="unsavedDialog"><h2>변경 내용을 저장할까요?</h2><p id="unsavedDescription">저장하지 않은 내용이 있습니다.</p><div class="dialog-actions"><button id="cancelLeave">취소</button><button id="discardLeave">저장 안 함</button><button id="saveLeave" class="primary">저장</button></div></dialog>
+<div id="toast" role="status" hidden></div>
+</body></html>
