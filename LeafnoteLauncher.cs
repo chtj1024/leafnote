@@ -49,6 +49,27 @@ internal static class LeafnoteLauncher {
             if (key != null) key.DeleteValue("Leafnote", false);
         SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero);
     }
+    static void OpenDefaultApps() {
+        Process.Start(new ProcessStartInfo("ms-settings:defaultapps?registeredAppUser=Leafnote") { UseShellExecute = true });
+    }
+    static void OfferDefaultApp() {
+        string command = "\"" + Exe + "\" \"%1\"";
+        using (RegistryKey open = Registry.CurrentUser.OpenSubKey(@"Software\Classes\" + ProgId + @"\shell\open\command"))
+        using (RegistryKey apps = Registry.CurrentUser.OpenSubKey(@"Software\RegisteredApplications")) {
+            if (apps != null && apps.GetValue("Leafnote") != null) {
+                // Registered before: only repair the entry if this folder was moved.
+                if (open == null || !String.Equals(Convert.ToString(open.GetValue("")), command, StringComparison.OrdinalIgnoreCase)) Register();
+                return;
+            }
+        }
+        using (RegistryKey state = Registry.CurrentUser.CreateSubKey(@"Software\Leafnote")) {
+            if (state.GetValue("DefaultAppPrompted") != null) return;
+            state.SetValue("DefaultAppPrompted", 1, RegistryValueKind.DWord);
+        }
+        if (MessageBox.Show("Leafnote를 .md 파일을 여는 기본 앱으로 설정할까요?\n\n'예'를 누르면 Leafnote를 등록하고 Windows 기본 앱 설정을 엽니다. 거기서 .md 항목의 앱을 Leafnote로 선택해주세요.\n나중에 register-md.cmd를 실행해 다시 설정할 수 있습니다.", "Leafnote", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        Register();
+        OpenDefaultApps();
+    }
     static JavaScriptSerializer Serializer() { return new JavaScriptSerializer { MaxJsonLength = 32 * 1024 * 1024 }; }
     static Dictionary<string, object> RequestJson(string url, string token, string payload) {
         HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
@@ -174,7 +195,7 @@ internal static class LeafnoteLauncher {
             if (args.Length == 1 && args[0] == "--register") { Register(); return 0; }
             if (args.Length == 1 && args[0] == "--unregister") { Unregister(); return 0; }
             if (args.Length == 1 && args[0] == "--default-apps") {
-                Process.Start(new ProcessStartInfo("ms-settings:defaultapps?registeredAppUser=Leafnote") { UseShellExecute = true }); return 0;
+                OpenDefaultApps(); return 0;
             }
             if (args.Length > 1) throw new Exception("한 번에 마크다운 파일 하나를 열어주세요.");
             string root = Path.GetDirectoryName(Exe), file = null;
@@ -184,6 +205,7 @@ internal static class LeafnoteLauncher {
                 if (!File.Exists(file) || !(ext.Equals(".md", StringComparison.OrdinalIgnoreCase) || ext.Equals(".markdown", StringComparison.OrdinalIgnoreCase)))
                     throw new Exception("기존 .md 또는 .markdown 파일을 선택해주세요.");
             }
+            try { OfferDefaultApp(); } catch (Exception) {}
             if(LeafnoteApp.TryOpenFile(root,file))return 0;
             OpenWindow(OpenFileUrl(root,file));
             return 0;
