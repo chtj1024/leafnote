@@ -199,6 +199,8 @@ internal static class LeafnoteLauncher {
             }
             if (args.Length > 1) throw new Exception("한 번에 마크다운 파일 하나를 열어주세요.");
             string root = Path.GetDirectoryName(Exe), file = null;
+            if (!File.Exists(Path.Combine(root, "server-runner.cjs")) || !Directory.Exists(Path.Combine(root, "public")))
+                throw new Exception("Leafnote 파일이 모두 있는 폴더에서 실행해주세요.\n압축 프로그램 안에서 바로 실행하지 말고, 압축을 완전히 푼 뒤 Leafnote 폴더의 Leafnote.exe를 실행해주세요.");
             if (args.Length == 1) {
                 file = Path.GetFullPath(args[0]);
                 string ext = Path.GetExtension(file);

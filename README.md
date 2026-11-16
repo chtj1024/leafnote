@@ -12,11 +12,12 @@ Edit the `.md` files already on your PC in a Notion-style block editor. No accou
 
 ### Download (no build needed)
 
-1. Download `Leafnote-vX.Y.Z-win-x64.zip` from the [Releases](https://github.com/chtj1024/leafnote/releases/latest) page and extract it anywhere (not inside the zip viewer).
-2. Install [Node.js](https://nodejs.org/) 18 or later if you do not have it.
-3. Run `Leafnote.exe`. On the first launch it asks whether to make Leafnote your default app for `.md` files.
+1. Download `Leafnote-vX.Y.Z-win-x64.zip` from the [Releases](https://github.com/chtj1024/leafnote/releases/latest) page and extract it completely (do not run it from inside the zip viewer).
+2. Run `Leafnote.exe`. Node.js is bundled, so nothing else needs to be installed. On the first launch it asks whether to make Leafnote your default app for `.md` files.
 
-Windows SmartScreen may warn about an unsigned app on first run; choose **More info → Run anyway**.
+Windows SmartScreen may warn about an unsigned app on first run; choose **More info → Run anyway**. The Microsoft Edge WebView2 Runtime is required (included with Windows 11 and current Windows 10).
+
+Maintainers: `powershell -ExecutionPolicy Bypass -File package-release.ps1 -Version X.Y.Z` builds the exe and creates the release zip (with a SHA-256-verified Node.js) in `dist/`.
 
 ### Build from source
 
