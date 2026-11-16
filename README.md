@@ -13,7 +13,9 @@ PC에 이미 있는 `.md` 파일을 노션처럼 블록 단위로 편집할 수 
 ### 다운로드 (빌드 불필요)
 
 1. [Releases](https://github.com/chtj1024/leafnote/releases/latest) 페이지에서 `Leafnote-vX.Y.Z-win-x64.zip`을 내려받아 **완전히 압축을 풉니다** (압축 프로그램 안에서 바로 실행하지 마세요).
-2. `Leafnote.exe`를 실행합니다. Node.js가 함께 들어 있어서 따로 설치할 것이 없습니다. 처음 실행하면 Leafnote를 `.md` 파일의 기본 앱으로 설정할지 물어봅니다.
+2. 압축을 푼 `Leafnote` 폴더에는 `Leafnote.exe`와 `app` 폴더만 있습니다. **`Leafnote.exe`만 실행하면 됩니다.** `app` 폴더는 프로그램 파일이므로 건드리지 마세요. Node.js가 함께 들어 있어서 따로 설치할 것이 없습니다. 처음 실행하면 Leafnote를 `.md` 파일의 기본 앱으로 설정할지 물어봅니다.
+
+폴더는 다른 곳으로 옮겨도 됩니다. `.md` 기본 앱으로 설정한 뒤 옮겼다면 `Leafnote.exe`를 한 번 실행하세요. 등록 정보가 자동으로 갱신됩니다.
 
 처음 실행할 때 Windows SmartScreen이 서명되지 않은 앱이라고 경고할 수 있습니다. **추가 정보 → 실행**을 선택하세요. Microsoft Edge WebView2 Runtime이 필요합니다 (Windows 11과 최신 Windows 10에는 기본으로 들어 있습니다).
 
@@ -89,7 +91,7 @@ Leafnote는 처음 표시되기 전에 저장된 위치와 크기로 자체 네�
 
 네이티브 호스트는 HTML을 해석하기 전에 `public/theme.js`를 주입하므로 첫 화면부터 저장된 테마가 적용됩니다. 창과 내장 편집기는 숨긴 상태로 만들고, 요청한 문서가 설치된 뒤에만 창을 표시합니다. 시작 중이나 로딩 중인 창을 먼저 보여주지 않습니다. Leafnote 창에는 DWM 표시/숨김 전환 효과를 끄고, 처음 배경을 지울 때도 선택한 테마 색을 사용합니다. 이미 실행 중인 상태에서 여는 경우도 같은 순서를 따릅니다.
 
-`.md` 파일을 우클릭 → **연결 프로그램 → 다른 앱 선택 → 이 PC에서 앱 선택**을 누른 뒤 이 폴더의 `Leafnote.exe`를 고르세요. 파일이 열리고 바로 편집됩니다.
+`.md` 파일을 우클릭 → **연결 프로그램 → 다른 앱 선택 → 이 PC에서 앱 선택**을 누른 뒤 `Leafnote.exe`를 고르세요 (릴리스 zip에서는 맨 위의 `Leafnote.exe`). 파일이 열리고 바로 편집됩니다.
 
 - `register-md.cmd`: 현재 사용자에게 Leafnote를 "연결 프로그램" 후보로 등록하고 Windows 기본 앱 설정을 엽니다.
 - `unregister-md.cmd`: 그 등록을 제거합니다.
@@ -119,6 +121,7 @@ server.js              로컬 HTTP 서버 (Node.js, 의존성 없음)
 public/                편집기 UI (index.html, app.js, markdown.js, style.css)
 test/                  테스트 (node:test)
 LeafnoteLauncher.cs    Leafnote.exe 런처 소스
+LeafnoteBootstrap.cs   릴리스 zip 맨 위의 Leafnote.exe (app\Leafnote.exe를 실행하는 작은 런처)
 LeafnoteWindow.cs      창 위치 저장 및 복원
 LeafnoteHost.cs        WebView2 편집기를 내장한 네이티브 창
 LeafnoteApp.cs         파일 열기 브로커와 빈 편집기 재사용 제한
