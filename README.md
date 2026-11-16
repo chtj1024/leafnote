@@ -1,27 +1,27 @@
 # Leafnote
 
-**A lightweight, offline, block-based Markdown editor for Windows.**
-Edit the `.md` files already on your PC in a Notion-style block editor. No account, no cloud, no internet connection required.
+**Windows용 가볍고 오프라인으로 동작하는 블록 기반 마크다운 편집기입니다.**
+PC에 이미 있는 `.md` 파일을 노션처럼 블록 단위로 편집할 수 있습니다. 계정, 클라우드, 인터넷 연결이 필요 없습니다.
 
-- Edits your original files directly (no hidden database, no copies)
-- Block editing with `/` slash commands, drag-and-drop reordering, tables, checklists, and highlights
-- Autosave, light/dark theme, and raw Markdown view
-- Zero npm dependencies: just Node.js 18+ and plain HTML/CSS/JS
+- 원본 파일을 직접 편집합니다 (숨겨진 데이터베이스나 복사본이 없습니다)
+- `/` 슬래시 명령, 드래그 앤 드롭 순서 변경, 표, 체크리스트, 형광펜 등 블록 편집 지원
+- 자동 저장, 라이트/다크 테마, 마크다운 원문 보기
+- npm 의존성 없음: Node.js 18 이상과 순수 HTML/CSS/JS만 사용
 
-## Quick start
+## 빠른 시작
 
-### Download (no build needed)
+### 다운로드 (빌드 불필요)
 
-1. Download `Leafnote-vX.Y.Z-win-x64.zip` from the [Releases](https://github.com/chtj1024/leafnote/releases/latest) page and extract it completely (do not run it from inside the zip viewer).
-2. Run `Leafnote.exe`. Node.js is bundled, so nothing else needs to be installed. On the first launch it asks whether to make Leafnote your default app for `.md` files.
+1. [Releases](https://github.com/chtj1024/leafnote/releases/latest) 페이지에서 `Leafnote-vX.Y.Z-win-x64.zip`을 내려받아 **완전히 압축을 풉니다** (압축 프로그램 안에서 바로 실행하지 마세요).
+2. `Leafnote.exe`를 실행합니다. Node.js가 함께 들어 있어서 따로 설치할 것이 없습니다. 처음 실행하면 Leafnote를 `.md` 파일의 기본 앱으로 설정할지 물어봅니다.
 
-Windows SmartScreen may warn about an unsigned app on first run; choose **More info → Run anyway**. The Microsoft Edge WebView2 Runtime is required (included with Windows 11 and current Windows 10).
+처음 실행할 때 Windows SmartScreen이 서명되지 않은 앱이라고 경고할 수 있습니다. **추가 정보 → 실행**을 선택하세요. Microsoft Edge WebView2 Runtime이 필요합니다 (Windows 11과 최신 Windows 10에는 기본으로 들어 있습니다).
 
-Maintainers: `powershell -ExecutionPolicy Bypass -File package-release.ps1 -Version X.Y.Z` builds the exe and creates the release zip (with a SHA-256-verified Node.js) in `dist/`.
+관리자용: `powershell -ExecutionPolicy Bypass -File package-release.ps1 -Version X.Y.Z`를 실행하면 exe를 빌드하고, SHA-256으로 검증한 Node.js를 포함한 릴리스 zip을 `dist/`에 만듭니다.
 
-### Build from source
+### 소스에서 빌드
 
-**Requirements:** Windows 10/11 x64, [Node.js](https://nodejs.org/) 18 or later, and the Microsoft Edge WebView2 Runtime (included on this PC).
+**요구 사항:** Windows 10/11 x64, [Node.js](https://nodejs.org/) 18 이상, Microsoft Edge WebView2 Runtime (이 PC에는 포함되어 있습니다).
 
 ```bash
 git clone https://github.com/chtj1024/leafnote.git
@@ -29,117 +29,119 @@ cd leafnote
 powershell -ExecutionPolicy Bypass -File build-launcher.ps1
 ```
 
-`build-launcher.ps1` builds the native window and launcher into `Leafnote.exe` with the .NET Framework compiler (`csc.exe`) that ships with Windows. Keep the included WebView2 SDK DLLs beside the executable. Then run `Leafnote.exe` (or `start.cmd`). The launcher automatically finds an installed Node.js runtime.
+`build-launcher.ps1`은 Windows에 기본 포함된 .NET Framework 컴파일러(`csc.exe`)로 네이티브 창과 런처를 `Leafnote.exe`로 빌드합니다. 함께 들어 있는 WebView2 SDK DLL을 실행 파일 옆에 그대로 두세요. 그다음 `Leafnote.exe`(또는 `start.cmd`)를 실행합니다. 런처는 설치된 Node.js를 자동으로 찾습니다.
 
-Run `stop.cmd` to stop the local server. Make sure your work is saved first.
+로컬 서버를 끄려면 `stop.cmd`를 실행하세요. 먼저 작업 내용을 저장했는지 확인하세요.
 
-You can also run the server without the launcher:
+런처 없이 서버만 실행할 수도 있습니다.
 
 ```bash
 npm start
 ```
 
-## Opening and saving files
+## 파일 열기와 저장
 
-| Action | How |
+| 동작 | 방법 |
 | --- | --- |
-| New document | **New** button or `Ctrl+N`. Lives in memory until you save. |
-| Open | **Open** button or `Ctrl+O` (Windows file picker) |
-| Save | **Save** button or `Ctrl+S` |
-| Save as | **⋯ → Save as** or `Ctrl+Shift+S` |
-| Close window | `Ctrl+W`. Uses the same save and unsaved-changes checks as the window's Close button. |
+| 새 문서 | **새 문서** 버튼 또는 `Ctrl+N`. 저장하기 전까지는 메모리에만 있습니다. |
+| 열기 | **열기** 버튼 또는 `Ctrl+O` (Windows 파일 선택 창) |
+| 저장 | **저장** 버튼 또는 `Ctrl+S` |
+| 다른 이름으로 저장 | **⋯ → 다른 이름으로 저장** 또는 `Ctrl+Shift+S` |
+| 창 닫기 | `Ctrl+W`. 창의 닫기 버튼과 같은 저장 및 저장하지 않은 변경 확인을 거칩니다. |
 
-- Documents linked to a file autosave about 0.65 seconds after your last edit.
-- If you have unsaved changes, you can choose Save, Don't save, or Cancel.
-- The full path of the open file is shown under its name. Rename files in Explorer or use Save as.
-- Existing files are updated in place rather than replaced, so desktop icon positions and file attributes are kept.
-- The launcher and editor check that the running server actually uses in-place saves. If an older server is still running after an update, save all documents, run `stop.cmd`, and reopen your Markdown file before continuing.
-- The light/dark toggle is in the top right. Theme and editor font size are remembered in the browser.
+- 파일과 연결된 문서는 마지막 편집 후 약 0.65초 뒤에 자동 저장됩니다.
+- 저장하지 않은 변경이 있으면 저장, 저장 안 함, 취소 중에서 선택할 수 있습니다.
+- 열려 있는 파일의 전체 경로가 이름 아래에 표시됩니다. 파일 이름은 탐색기에서 바꾸거나 다른 이름으로 저장을 사용하세요.
+- 기존 파일은 교체하지 않고 그 자리에서 내용만 갱신하므로 바탕화면 아이콘 위치와 파일 속성이 유지됩니다.
+- 런처와 편집기는 실행 중인 서버가 실제로 제자리 저장 방식을 쓰는지 확인합니다. 업데이트 후에도 이전 서버가 실행 중이면 모든 문서를 저장하고 `stop.cmd`를 실행한 뒤 마크다운 파일을 다시 열어주세요.
+- 라이트/다크 전환 버튼은 오른쪽 위에 있습니다. 테마와 편집기 글자 크기는 브라우저에 기억됩니다.
 
-**Conflict protection:** if the file is changed by another window or program, Leafnote will not overwrite it. Use **Save as** to keep your version, then reopen the original. If the original is deleted or moved, Leafnote will not silently recreate it.
+**충돌 보호:** 다른 창이나 프로그램이 파일을 바꾸면 Leafnote는 그 파일을 덮어쓰지 않습니다. **다른 이름으로 저장**으로 내 버전을 보관한 뒤 원본을 다시 여세요. 원본이 삭제되거나 이동된 경우에도 Leafnote가 조용히 다시 만들지 않습니다.
 
-**Encodings:** UTF-8, UTF-8 with BOM, UTF-16 LE, and UTF-16 BE. The original encoding, BOM, and line endings are kept. Files up to 4 MB are supported.
+**인코딩:** UTF-8, BOM이 있는 UTF-8, UTF-16 LE, UTF-16 BE를 지원합니다. 원래의 인코딩, BOM, 줄바꿈 형식이 유지됩니다. 4MB까지의 파일을 지원합니다.
 
-## Editing
+## 편집
 
-- Use the font-size selector in the toolbar to change the editor text size (10–36 px). Headings, tables, code, and Markdown view scale with it. The setting is remembered across windows and does not change file contents.
-- Type `/` in an empty block to insert text, headings, lists, checklists, quotes, code, dividers, or tables.
-- Drag the handle on the left of a block to reorder it, or click it to change the block type.
-- Bold `Ctrl+B`, italic `Ctrl+I`, underline `Ctrl+U`, and strikethrough.
-- Select text to show 7 soft highlight colors and a clear-highlight tool. The **A** button in the toolbar does the same.
-- Tables size to their content. Click a cell to add or remove rows and columns, delete the table, or continue writing below it. A final table always has a blank paragraph below it.
-- In a table, Up/Down moves to the same column in the previous/next row. Left/Right moves to the neighboring cell at the start/end of its text; inside text it moves the caret. Up from the first row and Down from the last row moves outside the table. Shift+arrows keeps selecting text. Tab/Enter navigation and pasting TSV data are also supported.
-- `Ctrl+Z` / `Ctrl+Shift+Z`: undo / redo block edits.
-- **Markdown view** lets you edit the raw source. Underline and highlight colors are saved as a small set of HTML tags. Use Markdown view when you need to keep syntax the block editor does not support.
+- 도구 모음의 글자 크기 선택기로 편집기 글자 크기(10–36px)를 바꿀 수 있습니다. 제목, 표, 코드, 마크다운 보기도 함께 커지거나 작아집니다. 이 설정은 모든 창에서 기억되며 파일 내용은 바뀌지 않습니다.
+- 빈 블록에서 `/`를 입력하면 텍스트, 제목, 목록, 체크리스트, 인용, 코드, 구분선, 표를 삽입할 수 있습니다.
+- 블록 왼쪽의 핸들을 드래그하면 순서를 바꾸고, 클릭하면 블록 종류를 바꿀 수 있습니다.
+- 굵게 `Ctrl+B`, 기울임 `Ctrl+I`, 밑줄 `Ctrl+U`, 취소선을 지원합니다.
+- 텍스트를 선택하면 7가지 은은한 형광펜 색과 형광펜 지우기 도구가 나타납니다. 도구 모음의 **A** 버튼도 같은 기능입니다.
+- 표는 내용에 맞춰 크기가 정해집니다. 셀을 클릭하면 행과 열을 추가하거나 삭제하고, 표를 삭제하거나, 표 아래에 이어서 쓸 수 있습니다. 표가 마지막 블록이면 그 아래에는 항상 빈 문단이 있습니다.
+- 표에서 위/아래 화살표는 이전/다음 행의 같은 열로 이동합니다. 왼쪽/오른쪽 화살표는 텍스트의 시작/끝에서 이웃 셀로 이동하고, 텍스트 안에서는 커서만 움직입니다. 첫 행에서 위로, 마지막 행에서 아래로 누르면 표 밖으로 나갑니다. Shift+화살표로 텍스트를 계속 선택할 수 있습니다. Tab/Enter 이동과 TSV 데이터 붙여넣기도 지원합니다.
+- 표에서 행 전체가 비어 있으면 Backspace/Delete로 그 행을 삭제합니다. 헤더 행만 남은 빈 표에서는 표 전체가 삭제되며 `Ctrl+Z`로 되돌릴 수 있습니다.
+- `Ctrl+Z` / `Ctrl+Shift+Z`: 블록 편집 실행 취소 / 다시 실행.
+- **마크다운 보기**에서는 원문을 직접 편집할 수 있습니다. 밑줄과 형광펜 색은 소수의 HTML 태그로 저장됩니다. 블록 편집기가 지원하지 않는 문법을 유지해야 할 때는 마크다운 보기를 사용하세요.
 
-## Open `.md` files with Leafnote (Windows)
+## `.md` 파일을 Leafnote로 열기 (Windows)
 
-`Leafnote.exe` opens files directly and starts Node.js itself when the server is stopped, without starting PowerShell. `launch.ps1` remains available as a manual startup helper.
+`Leafnote.exe`는 파일을 바로 열고, 서버가 꺼져 있으면 PowerShell을 거치지 않고 Node.js를 직접 시작합니다. `launch.ps1`은 수동 시작용 도우미로 남아 있습니다.
 
-While windows are open, one native UI process handles new file requests. After the last window closes, it clears that document and retains one empty WebView2 controller for up to two minutes. Reopening during that period reuses the controller; after two minutes the UI process exits. The first open still needs to initialize WebView2.
+창이 열려 있는 동안에는 하나의 네이티브 UI 프로세스가 새 파일 요청을 처리합니다. 마지막 창이 닫히면 해당 문서를 비우고 빈 WebView2 컨트롤러 하나를 최대 2분 동안 유지합니다. 그 사이에 다시 열면 컨트롤러를 재사용하고, 2분이 지나면 UI 프로세스가 종료됩니다. 처음 열 때는 WebView2를 초기화해야 합니다.
 
-The UI broker is scoped to the executable build, so newly opened windows use an updated executable immediately even while an older version still has an open window.
+UI 브로커는 실행 파일 빌드 단위로 구분되므로, 이전 버전 창이 아직 열려 있어도 새로 여는 창은 업데이트된 실행 파일을 바로 사용합니다.
 
-Leafnote remembers the position, size and maximized state of the last window you close. New app windows restore that placement. Minimized windows reopen normally, and windows are kept on an available display if your monitor setup changes. This applies to windows opened with the updated launcher.
+Leafnote는 마지막으로 닫은 창의 위치, 크기, 최대화 상태를 기억하고 새 창에서 그대로 복원합니다. 최소화된 창은 일반 상태로 열리며, 모니터 구성이 바뀌어도 사용 가능한 화면 안에 창이 표시됩니다. 업데이트된 런처로 연 창에 적용됩니다.
 
-Leafnote creates its own native window with the saved bounds before its first display. The editor runs inside that window through WebView2; no separate Edge app window is created or moved after appearing.
+Leafnote는 처음 표시되기 전에 저장된 위치와 크기로 자체 네이티브 창을 만듭니다. 편집기는 이 창 안에서 WebView2로 실행되며, 별도의 Edge 앱 창을 만들거나 표시된 뒤에 옮기지 않습니다.
 
-Window preferences are stored in `%LOCALAPPDATA%\Leafnote\<installation hash>\window-state.json`. The WebView2 profile in the neighboring `webview/` folder remembers UI preferences, including font size and theme. `theme.txt` also remembers the theme for the native background and title bar. The native window stays hidden until the requested document is ready; startup failures reveal a themed error screen. Each installation keeps separate settings. Closing the native window first asks the editor to save changes or show its existing unsaved-changes dialog.
+창 설정은 `%LOCALAPPDATA%\Leafnote\<설치 해시>\window-state.json`에 저장됩니다. 옆의 `webview/` 폴더의 WebView2 프로필에는 글자 크기와 테마 같은 UI 설정이 기억됩니다. `theme.txt`는 네이티브 배경과 제목 표시줄을 위해 테마를 따로 기억합니다. 네이티브 창은 요청한 문서가 준비될 때까지 숨겨져 있으며, 시작에 실패하면 테마가 적용된 오류 화면이 표시됩니다. 설치 위치마다 설정이 따로 유지됩니다. 네이티브 창을 닫으면 먼저 편집기에 변경 내용 저장을 요청하거나 기존의 저장하지 않은 변경 확인 창을 보여줍니다.
 
-The native host injects `public/theme.js` before HTML parsing so the first web frame uses the saved theme. It creates the native window and embedded editor while hidden, and only shows the window once the requested document has been installed. No startup/loading window is shown first. DWM show/hide transitions are disabled for Leafnote's own window, and its first native background erase uses the selected theme. Warm opens follow the same sequence.
+네이티브 호스트는 HTML을 해석하기 전에 `public/theme.js`를 주입하므로 첫 화면부터 저장된 테마가 적용됩니다. 창과 내장 편집기는 숨긴 상태로 만들고, 요청한 문서가 설치된 뒤에만 창을 표시합니다. 시작 중이나 로딩 중인 창을 먼저 보여주지 않습니다. Leafnote 창에는 DWM 표시/숨김 전환 효과를 끄고, 처음 배경을 지울 때도 선택한 테마 색을 사용합니다. 이미 실행 중인 상태에서 여는 경우도 같은 순서를 따릅니다.
 
-Right-click a `.md` file → **Open with → Choose another app → Choose an app on your PC**, then select `Leafnote.exe` in this folder. The file opens and is edited directly.
+`.md` 파일을 우클릭 → **연결 프로그램 → 다른 앱 선택 → 이 PC에서 앱 선택**을 누른 뒤 이 폴더의 `Leafnote.exe`를 고르세요. 파일이 열리고 바로 편집됩니다.
 
-- `register-md.cmd`: registers Leafnote as an "Open with" option for the current user and opens Windows Default Apps settings.
-- `unregister-md.cmd`: removes that registration.
+- `register-md.cmd`: 현재 사용자에게 Leafnote를 "연결 프로그램" 후보로 등록하고 Windows 기본 앱 설정을 엽니다.
+- `unregister-md.cmd`: 그 등록을 제거합니다.
 
-The first time you run `Leafnote.exe`, it asks once whether to make Leafnote the default app for `.md` files. Choosing **Yes** registers Leafnote for the current user and opens Windows Default Apps, where you pick Leafnote for `.md` (Windows requires you to confirm this step yourself). Choosing **No** never asks again; run `register-md.cmd` later to set it up. If you move the Leafnote folder after registering, the registration is repaired automatically the next time you open Leafnote.
+`Leafnote.exe`를 처음 실행하면 Leafnote를 `.md` 파일의 기본 앱으로 설정할지 한 번 물어봅니다. **예**를 선택하면 현재 사용자에게 Leafnote를 등록하고 Windows 기본 앱 설정을 엽니다. 거기서 `.md`에 Leafnote를 직접 선택하면 됩니다 (이 단계는 Windows 정책상 사용자가 직접 확인해야 합니다). **아니요**를 선택하면 다시 묻지 않으며, 나중에 `register-md.cmd`를 실행해 설정할 수 있습니다. 등록한 뒤 Leafnote 폴더를 옮기면 다음에 Leafnote를 열 때 등록 정보가 자동으로 복구됩니다.
 
-Leafnote never changes protected Windows default-app settings on its own.
+Leafnote는 보호된 Windows 기본 앱 설정을 스스로 바꾸지 않습니다.
 
-## Data and backups
+## 데이터와 백업
 
-Leafnote does not keep its own copies, backups, or trash, and does not store a list of recent files on disk. Back up important files yourself. New documents that were never saved are lost if you close or reload the window.
+Leafnote는 자체 복사본, 백업, 휴지통을 두지 않고 최근 파일 목록도 디스크에 저장하지 않습니다. 중요한 파일은 직접 백업하세요. 한 번도 저장하지 않은 새 문서는 창을 닫거나 새로 고치면 사라집니다.
 
-Runtime logs are written only to the Windows temp folder under `Leafnote/<hash of program path>/`.
+실행 로그는 Windows 임시 폴더의 `Leafnote/<프로그램 경로 해시>/` 아래에만 기록됩니다.
 
-Older versions stored pages in a `data/` folder. That folder is never deleted on upgrade, and you can open the old `.md` files in `data/pages` with **Open**. `data/index.json` maps old page names to file IDs.
+이전 버전은 페이지를 `data/` 폴더에 저장했습니다. 이 폴더는 업그레이드할 때 삭제되지 않으며, `data/pages`의 예전 `.md` 파일은 **열기**로 열 수 있습니다. `data/index.json`은 예전 페이지 이름과 파일 ID를 연결해 줍니다.
 
-## Security
+## 보안
 
-- The server listens only on `127.0.0.1`.
-- Write requests require an app session token, and the Host header, Origin, and JSON format are checked.
-- Open and Save as use the native Windows file picker.
+- 서버는 `127.0.0.1`에서만 연결을 받습니다.
+- 쓰기 요청에는 앱 세션 토큰이 필요하며, Host 헤더, Origin, JSON 형식을 검사합니다.
+- 열기와 다른 이름으로 저장은 Windows 기본 파일 선택 창을 사용합니다.
 
-## Project structure
+## 프로젝트 구조
 
 ```
-server.js              Local HTTP server (Node.js, no dependencies)
-public/                Editor UI (index.html, app.js, markdown.js, style.css)
-test/                  Tests (node:test)
-LeafnoteLauncher.cs    Source for Leafnote.exe launcher
-LeafnoteWindow.cs      Window placement persistence and restore
-LeafnoteHost.cs        Native window with an embedded WebView2 editor
-LeafnoteApp.cs         File-open broker and bounded empty editor reuse
-server-runner.cjs      Direct native-launcher server startup and temp logs
-build-launcher.ps1     Builds Leafnote.exe
-launch.ps1, stop.ps1   Start / stop helpers
-file-picker.ps1        Windows file picker bridge
-register-md.cmd        "Open with" registration
+server.js              로컬 HTTP 서버 (Node.js, 의존성 없음)
+public/                편집기 UI (index.html, app.js, markdown.js, style.css)
+test/                  테스트 (node:test)
+LeafnoteLauncher.cs    Leafnote.exe 런처 소스
+LeafnoteWindow.cs      창 위치 저장 및 복원
+LeafnoteHost.cs        WebView2 편집기를 내장한 네이티브 창
+LeafnoteApp.cs         파일 열기 브로커와 빈 편집기 재사용 제한
+server-runner.cjs      네이티브 런처용 서버 직접 시작 및 임시 로그
+build-launcher.ps1     Leafnote.exe 빌드
+package-release.ps1    릴리스 zip 생성 (Node.js 포함)
+launch.ps1, stop.ps1   시작 / 종료 도우미
+file-picker.ps1        Windows 파일 선택 창 연결
+register-md.cmd        "연결 프로그램" 등록
 ```
 
-## Development
+## 개발
 
 ```bash
 npm test
 ```
 
-The native browser integration tests are opt-in because they open app windows. In a normal Windows terminal, run `$env:LEAFNOTE_NATIVE_UI_TESTS='1'; npm test`. They check the first visible placement, embedded editor loading, cancelled closing, final placement persistence for normal/maximized/default windows, hidden startup, initial paint under the app's content security policy, empty controller reuse, and idle expiry. The default suite also checks concurrent native cold launches against an isolated server and verifies the native startup HWND stays hidden, its first erase is dark, and its DWM transitions are disabled for normal and maximized windows.
+네이티브 브라우저 통합 테스트는 앱 창을 열기 때문에 선택 사항입니다. 일반 Windows 터미널에서 `$env:LEAFNOTE_NATIVE_UI_TESTS='1'; npm test`를 실행하세요. 이 테스트는 첫 표시 위치, 내장 편집기 로딩, 닫기 취소, 일반/최대화/기본 창의 최종 위치 저장, 숨김 시작, 앱의 콘텐츠 보안 정책 아래에서의 첫 화면 그리기, 빈 컨트롤러 재사용, 유휴 만료를 확인합니다. 기본 테스트는 격리된 서버에 대한 동시 네이티브 콜드 실행도 검사하고, 네이티브 시작 창 핸들(HWND)이 숨겨져 있는지, 처음 배경 지우기가 어두운 색인지, 일반 및 최대화 창에서 DWM 전환 효과가 꺼져 있는지 확인합니다.
 
-## Contributing
+## 기여
 
-Issues and pull requests are welcome. If you find Leafnote useful, a ⭐ on the repository helps others find it.
+이슈와 풀 리퀘스트를 환영합니다. Leafnote가 유용하셨다면 저장소에 ⭐를 눌러 다른 사람들이 찾는 데 도움을 주세요.
 
-## License
+## 라이선스
 
 [MIT](LICENSE)
