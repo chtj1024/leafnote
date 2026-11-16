@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Net;
 using System.Net.Sockets;
 using System.Collections.Generic;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 internal static class LeafnoteLauncher {
@@ -102,6 +103,9 @@ internal static class LeafnoteLauncher {
                 throw new Exception("다른 프로그램 또는 다른 폴더의 Leafnote가 실행 중입니다. 해당 Leafnote의 stop.cmd 실행 후 다시 열어주세요.");
             if (!health.TryGetValue("version", out version) || Convert.ToInt32(version) < 3)
                 throw new Exception("이전 Leafnote가 실행 중입니다. 문서의 저장됨 표시를 확인하고 stop.cmd 실행 후 다시 열어주세요.");
+            object saveMode;
+            if (!health.TryGetValue("saveMode", out saveMode) || Convert.ToString(saveMode) != "inplace")
+                throw new Exception("이전 저장 방식의 Leafnote가 아직 실행 중입니다. 문서를 모두 저장한 뒤 Leafnote 폴더의 stop.cmd를 실행하고 파일을 다시 열어주세요.");
             if (file != null) {
                 Dictionary<string, object> bootstrap = RequestJson(url + "/api/bootstrap", null, null);
                 string token = Convert.ToString(bootstrap["token"]);
@@ -117,16 +121,56 @@ internal static class LeafnoteLauncher {
             return false;
         }
     }
-    static void OpenWindow(string url) {
-        string edge = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft\Edge\Application\msedge.exe");
-        if (File.Exists(edge)) {
-            Process.Start(new ProcessStartInfo(edge, "--app=" + url + " --new-window") { UseShellExecute = false });
-        } else {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    static string FindNode(string root) {
+        List<string> candidates=new List<string> {
+            Path.Combine(root,@"runtime\node.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),@"nodejs\node.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),@".cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe")
+        };
+        foreach(string directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)) {
+            try { if(!String.IsNullOrEmpty(directory)) candidates.Add(Path.Combine(directory.Trim('"'),"node.exe")); } catch(ArgumentException) {}
         }
+        foreach(string candidate in candidates)if(File.Exists(candidate))return candidate;
+        throw new Exception("Node.js 18 이상을 설치한 뒤 다시 열어주세요.");
+    }
+    internal static string OpenFileUrl(string root,string file,int port=43127) {
+        string url;
+        if(TryOpenRunningServer(root,file,port,out url))return url;
+        using(Mutex gate=new Mutex(false,"Local\\Leafnote-"+LeafnoteWindow.RootKey(root)+"-"+port)) {
+            bool locked;
+            try { locked=gate.WaitOne(10000); } catch(AbandonedMutexException) { locked=true; }
+            if(!locked)throw new Exception("Leafnote 시작 대기 시간이 초과되었습니다.");
+            try {
+                if(TryOpenRunningServer(root,file,port,out url))return url;
+                string logs=Path.Combine(Path.GetTempPath(),"Leafnote",LeafnoteWindow.RootKey(root));
+                ProcessStartInfo info=new ProcessStartInfo(FindNode(root),"\""+Path.Combine(root,"server-runner.cjs")+"\"") { UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,WorkingDirectory=root,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true };
+                info.EnvironmentVariables["LEAFNOTE_PORT"]=port.ToString();info.EnvironmentVariables["LEAFNOTE_LOG_DIR"]=logs;
+                using(Process server=Process.Start(info)) {
+                    Stopwatch waiting=Stopwatch.StartNew();
+                    while(waiting.ElapsedMilliseconds<8000) {
+                        if(TryOpenRunningServer(root,file,port,out url))return url;
+                        if(server.HasExited)throw new Exception("Leafnote 서버를 시작하지 못했습니다. 임시 폴더의 Leafnote 로그를 확인해주세요.");
+                        Thread.Sleep(20);
+                    }
+                }
+                throw new Exception("Leafnote 서버를 시작하지 못했습니다.");
+            } finally { gate.ReleaseMutex(); }
+        }
+    }
+    static void OpenWindow(string url) {
+        LeafnoteHost.Open(url,Path.GetDirectoryName(Exe));
     }
     [STAThread] static int Main(string[] args) {
         try {
+            if (args.Length == 2 && args[0] == "--open-url") {
+                string openedUrl = Encoding.UTF8.GetString(Convert.FromBase64String(args[1]));
+                Uri uri;
+                if (!Uri.TryCreate(openedUrl,UriKind.Absolute,out uri) || uri.Scheme != "http" || uri.Host != "127.0.0.1" || uri.AbsolutePath != "/" || !String.IsNullOrEmpty(uri.Fragment))
+                    throw new Exception("올바른 Leafnote 창 주소가 아닙니다.");
+                string readyUrl;
+                if (!TryOpenRunningServer(Path.GetDirectoryName(Exe),null,uri.Port,out readyUrl)) throw new Exception("Leafnote를 다시 실행해주세요.");
+                OpenWindow(openedUrl);return 0;
+            }
             if (args.Length == 1 && args[0] == "--register") { Register(); return 0; }
             if (args.Length == 1 && args[0] == "--unregister") { Unregister(); return 0; }
             if (args.Length == 1 && args[0] == "--default-apps") {
@@ -140,17 +184,8 @@ internal static class LeafnoteLauncher {
                 if (!File.Exists(file) || !(ext.Equals(".md", StringComparison.OrdinalIgnoreCase) || ext.Equals(".markdown", StringComparison.OrdinalIgnoreCase)))
                     throw new Exception("기존 .md 또는 .markdown 파일을 선택해주세요.");
             }
-            string url;
-            if (TryOpenRunningServer(root, file, 43127, out url)) { OpenWindow(url); return 0; }
-            // Keep the existing synchronized startup path for a stopped server.
-            string script = Path.Combine(root, "launch.ps1");
-            string arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"";
-            if (file != null) arguments += " -PathBase64 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(file));
-            string powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
-            Process.Start(new ProcessStartInfo(powershell, arguments) {
-                UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
-                WorkingDirectory = root
-            });
+            if(LeafnoteApp.TryOpenFile(root,file))return 0;
+            OpenWindow(OpenFileUrl(root,file));
             return 0;
         } catch (Exception error) {
             MessageBox.Show(error.Message, "Leafnote", MessageBoxButtons.OK, MessageBoxIcon.Error); return 1;

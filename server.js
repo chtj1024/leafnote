@@ -136,8 +136,8 @@ function createServer({pickFile = chooseFile} = {}) {
           if (req.headers['x-leafnote-token'] !== TOKEN || !String(req.headers['content-type']).startsWith('application/json')) return json(res,403,{error:'앱에서 다시 시도해주세요.'});
           if (req.headers.origin && ![`http://${host}`,`http://localhost:${PORT}`].includes(req.headers.origin)) return json(res,403,{error:'허용되지 않은 요청입니다.'});
         }
-        if (url.pathname === '/api/health' && req.method === 'GET') return json(res,200,{app:'leafnote',version:3,mode:'files',build:'file-editor-inplace-2',root:ROOT});
-        if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res,200,{token:TOKEN,mode:'files'});
+        if (url.pathname === '/api/health' && req.method === 'GET') return json(res,200,{app:'leafnote',version:3,mode:'files',saveMode:'inplace',build:'file-editor-inplace-3',root:ROOT});
+        if (url.pathname === '/api/bootstrap' && req.method === 'GET') return json(res,200,{token:TOKEN,mode:'files',saveMode:'inplace'});
         if (url.pathname === '/api/shutdown' && req.method === 'POST') {
           await body(req); json(res,200,{ok:true}); server.close(); server.closeIdleConnections?.(); return;
         }

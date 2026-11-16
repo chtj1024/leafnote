@@ -16,7 +16,7 @@ async function setup(t){
 }
 test('file-only sessions never create a page index or content cache',async t=>{
   const e=await setup(t),root=path.resolve(__dirname,'..'),before=fs.readdirSync(root);
-  assert.deepEqual(Object.keys(e.bootstrap).sort(),['mode','token']);assert.equal(e.bootstrap.mode,'files');
+  assert.deepEqual(Object.keys(e.bootstrap).sort(),['mode','saveMode','token']);assert.equal(e.bootstrap.mode,'files');assert.equal(e.bootstrap.saveMode,'inplace');
   const file=e.file(),opened=await e.request('/api/open-file','POST',{path:file}),doc=opened.value;
   assert.equal(opened.status,200);assert.equal(doc.path,file);assert.equal(doc.markdown,'처음\r\n');
   const again=await e.request('/api/open-file','POST',{path:path.join(e.dir,'.',path.basename(file))});assert.equal(again.value.id,doc.id);
@@ -54,7 +54,7 @@ test('request protections remain active',async t=>{
   const probe=createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));
   try {
     const status=await new Promise((resolve,reject)=>{http.get({host:'127.0.0.1',port:probe.address().port,path:'/api/health',headers:{Host:'evil.test'}},res=>{res.resume();resolve(res.statusCode);}).on('error',reject);});
-    assert.equal(status,403);assert.equal(health.value.version,3);
+    assert.equal(status,403);assert.equal(health.value.version,3);assert.equal(health.value.saveMode,'inplace');
   } finally {probe.closeAllConnections();await new Promise(resolve=>probe.close(resolve));}
   assert.equal((await e.request('/api/open-file','POST',{path:'relative.md'})).status,400);
 });

@@ -21,6 +21,7 @@ try {
     if ($leafHealth) {
         if ($leafHealth.app -ne 'leafnote' -or $leafHealth.root -ne $leafRoot) { throw '다른 프로그램 또는 다른 폴더의 Leafnote가 실행 중입니다. 해당 Leafnote의 stop.cmd 실행 후 다시 열어주세요.' }
         if ($leafHealth.version -lt 3) { throw '이전 Leafnote가 실행 중입니다. 문서의 저장됨 표시를 확인하고 stop.cmd 실행 후 Leafnote.exe를 다시 열어주세요.' }
+        if ($leafHealth.saveMode -ne 'inplace') { throw '이전 저장 방식의 Leafnote가 아직 실행 중입니다. 문서를 모두 저장한 뒤 Leafnote 폴더의 stop.cmd를 실행하고 파일을 다시 열어주세요.' }
     } else {
         $leafNode = $null
         $leafCommand = Get-Command node.exe -ErrorAction SilentlyContinue
@@ -38,7 +39,7 @@ try {
             Start-Sleep -Milliseconds 200
             try {
                 $leafHealth = Invoke-RestMethod "$leafUrl/api/health" -TimeoutSec 1
-                if ($leafHealth.app -eq 'leafnote' -and $leafHealth.root -eq $leafRoot -and $leafHealth.version -ge 3) { $leafReady = $true; break }
+                if ($leafHealth.app -eq 'leafnote' -and $leafHealth.root -eq $leafRoot -and $leafHealth.version -ge 3 -and $leafHealth.saveMode -eq 'inplace') { $leafReady = $true; break }
             } catch {}
         }
         if (-not $leafReady) { throw 'Leafnote를 시작하지 못했습니다. 임시 폴더의 Leafnote 로그를 확인해주세요.' }
@@ -51,9 +52,15 @@ try {
     }
     $leafMutex.ReleaseMutex(); $leafLocked = $false
     if ($NoBrowser) { Write-Output $leafUrl; exit 0 }
-    $leafEdge = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'
-    if (Test-Path -LiteralPath $leafEdge) { Start-Process -FilePath $leafEdge -ArgumentList "--app=$leafUrl", '--new-window' -WindowStyle Normal }
-    else { Start-Process $leafUrl }
+    $leafLauncher = Join-Path $leafRoot 'Leafnote.exe'
+    if (Test-Path -LiteralPath $leafLauncher) {
+        $leafOpenUrl = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($leafUrl))
+        Start-Process -FilePath $leafLauncher -ArgumentList '--open-url', $leafOpenUrl -WindowStyle Normal
+    } else {
+        $leafEdge = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'
+        if (Test-Path -LiteralPath $leafEdge) { Start-Process -FilePath $leafEdge -ArgumentList "--app=$leafUrl", '--new-window' -WindowStyle Normal }
+        else { Start-Process $leafUrl }
+    }
 } catch {
     if ($NoBrowser) { Write-Error $_; exit 1 }
     Add-Type -AssemblyName System.Windows.Forms

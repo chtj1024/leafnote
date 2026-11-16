@@ -47,7 +47,11 @@ async function api(url, method = 'GET', data) {
 function editable(id) { return document.querySelector(`.block[data-id="${id}"] .content`); }
 function blockElement(id) { return document.querySelector(`.block[data-id="${id}"]`); }
 function fresh(b) { return { ...b, id: crypto.randomUUID() }; }
-function fromMarkdown(text) { return M.parse(text).map(fresh); }
+function ensureTrailingParagraph(items = blocks) {
+  if (items.at(-1)?.type === 'table') items.push(fresh({type:'paragraph',text:''}));
+  return items;
+}
+function fromMarkdown(text) { return ensureTrailingParagraph(M.parse(text).map(fresh)); }
 function domMarkdown(node) {
   if (node.nodeType === 3) return node.textContent.replace(/\u00a0/g, ' ');
   if (node.nodeType !== 1) return '';
@@ -72,7 +76,8 @@ function syncBlocks() {
   for (const b of blocks) {
     if (b.type === 'table') {
       blockElement(b.id)?.querySelectorAll('.table-cell').forEach(cell => {
-        b.rows[Number(cell.dataset.row)][Number(cell.dataset.col)] = Array.from(cell.childNodes).map(domMarkdown).join('').replace(/\n$/, '');
+        const empty = !cell.textContent && (!cell.querySelectorAll || cell.querySelectorAll('br').length <= 1);
+        b.rows[Number(cell.dataset.row)][Number(cell.dataset.col)] = empty ? '' : Array.from(cell.childNodes).map(domMarkdown).join('').replace(/\n$/, '');
       });
       continue;
     }
@@ -84,6 +89,7 @@ function syncBlocks() {
 }
 function markdown() { if (sourceMode) return $('source').value; syncBlocks(); return M.stringify(blocks); }
 function renderBlocks() {
+  ensureTrailingParagraph();
   $('selectionToolbar').hidden = true; lastSelection = null;
   let number = 0;
   $('editor').innerHTML = blocks.map(b => {
@@ -200,6 +206,7 @@ async function saveAs() {
 async function save() { return hasFile() ? flush() : saveAs(); }
 function installDocument(doc) {
   active=doc; blocks=fromMarkdown(doc.markdown); dirty=false; generation++; sourceMode=false; lastSelection=null; selectedTableCell=null;
+  setFontSize(appFontSize,false);
   $('source').hidden=true; $('editor').hidden=false;
   $('sourceToggle').innerHTML=icon('code')+'<span>마크다운 보기</span>';
   $('loading').hidden=true; $('documentScroll').hidden=false; $('documentScroll').scrollTop=0;
@@ -287,7 +294,9 @@ function focusTableCell(id, row, col, end = false) {
   selectedTableCell = {id,row,col};
 }
 function leaveTable(b) {
-  const next = fresh({type:'paragraph',text:''}); blocks.splice(blocks.indexOf(b) + 1,0,next);
+  const index = blocks.indexOf(b) + 1, existing = blocks[index];
+  if (existing?.type === 'paragraph' && !existing.text) { focusBlock(existing.id); return; }
+  const next = fresh({type:'paragraph',text:''}); blocks.splice(index,0,next);
   renderBlocks(); focusBlock(next.id); changed();
 }
 function tableAction(b, action) {
@@ -312,7 +321,42 @@ function tableAction(b, action) {
 }
 function tableKeydown(e,b,cell) {
   const row = Number(cell.dataset.row), col = Number(cell.dataset.col), cols = b.rows[0].length;
+  if (e.isComposing || e.keyCode === 229) return;
+  const direction = {ArrowLeft:[0,-1],ArrowRight:[0,1],ArrowUp:[-1,0],ArrowDown:[1,0]}[e.key];
+  if (direction) {
+    if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    const selection = getSelection();
+    if (!selection?.rangeCount || !selection.isCollapsed || !cell.contains(selection.anchorNode)) return;
+    // Horizontal arrows keep editing text until the caret reaches a cell edge.
+    if (e.key === 'ArrowLeft' && !selectionAtStart(cell)) return;
+    if (e.key === 'ArrowRight' && !selectionAtEnd(cell)) return;
+    e.preventDefault(); syncBlocks();
+    const nextRow = row + direction[0], nextCol = col + direction[1];
+    if (nextRow < 0) {
+      const previous = blocks[blocks.indexOf(b) - 1];
+      if (previous) focusBlock(previous.id,true);
+    } else if (nextRow >= b.rows.length) {
+      const next = blocks[blocks.indexOf(b) + 1];
+      if (next) focusBlock(next.id); else leaveTable(b);
+    } else if (nextCol >= 0 && nextCol < cols) {
+      focusTableCell(b.id,nextRow,nextCol,e.key === 'ArrowLeft' || e.key === 'ArrowUp');
+    }
+    return;
+  }
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); syncBlocks(); leaveTable(b); return; }
+  if ((e.key === 'Backspace' || e.key === 'Delete') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const selection = typeof getSelection === 'function' ? getSelection() : null;
+    if (selection?.rangeCount && !selection.isCollapsed) return;
+    syncBlocks();
+    if (b.rows.length === 1 && b.rows[0].every(text => !text)) { e.preventDefault(); tableAction(b,'remove-table'); return; }
+    if (b.rows.length > 1 && b.rows[row].every(text => !text)) {
+      e.preventDefault();
+      b.rows.splice(row,1);
+      const nextRow = e.key === 'Backspace' ? Math.max(0,row - 1) : Math.min(row,b.rows.length - 1);
+      renderBlocks(); focusTableCell(b.id,nextRow,col,e.key === 'Backspace' && row > 0); changed();
+    }
+    return;
+  }
   if (e.key !== 'Tab' && !(e.key === 'Enter' && !e.shiftKey)) return;
   e.preventDefault(); syncBlocks();
   let nextRow = row, nextCol = col;
@@ -576,19 +620,24 @@ $('cancelLeave').onclick=()=>leaveChoice('cancel');
 $('discardLeave').onclick=()=>leaveChoice('discard');
 $('saveLeave').onclick=()=>leaveChoice('save');
 $('unsavedDialog').addEventListener('cancel',e=>{e.preventDefault();leaveChoice('cancel');});
-const FONT_SIZES = [10,12,14,16,18,20,22,24,28,32,36];
+const FONT_SIZES = [10,11,12,14,16,18,20,22,24,28,32,36];
+let appFontSize = 14;
 function setFontSize(value, persist = true) {
   const requested = Number(value), size = FONT_SIZES.includes(requested) ? requested : 14;
+  appFontSize = size;
   document.documentElement.style.setProperty('--editor-font-size',size+'px');
   $('fontSize').value = String(size);
-  if (persist) { try { localStorage.setItem('leafnote.fontSize',String(size)); } catch {} }
+  if (persist) {
+    try { localStorage.setItem('leafnote.fontSize',String(size)); } catch {}
+    window.chrome?.webview?.postMessage('leafnote-font-size:'+size);
+  }
 }
 let savedFontSize = 14;
 try { savedFontSize = localStorage.getItem('leafnote.fontSize') || 14; } catch {}
 setFontSize(savedFontSize,false);
 $('fontSize').addEventListener('change',e=>{closePopups();setFontSize(e.target.value);});
 window.addEventListener('storage',e=>{if(e.key==='leafnote.fontSize')setFontSize(e.newValue,false);});
-function setTheme(dark){document.body.classList.toggle('dark',dark);$('themeButton').innerHTML=icon(dark?'sun':'moon')+(dark?'라이트 모드':'다크 모드');localStorage.setItem('leafnote.dark',dark?'1':'0');}
+function setTheme(dark){document.documentElement.dataset.theme=dark?'dark':'light';document.body.classList.toggle('dark',dark);$('themeButton').innerHTML=icon(dark?'sun':'moon')+(dark?'라이트 모드':'다크 모드');localStorage.setItem('leafnote.dark',dark?'1':'0');window.chrome?.webview?.postMessage(dark?'leafnote-theme:dark':'leafnote-theme:light');}
 setTheme(localStorage.getItem('leafnote.dark')==='1');$('themeButton').onclick=()=>setTheme(!document.body.classList.contains('dark'));
 document.addEventListener('pointerdown',e=>{
   if(!e.target.closest('#editor,.format-tools,.popup'))lastSelection=null;
@@ -605,11 +654,39 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape')closePopups();
 });
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
+if (window.chrome?.webview) {
+  window.chrome.webview.addEventListener('message',async event=>{
+    if (typeof event.data==='string' && event.data.startsWith('leafnote-font-size:')) {
+      const size=Number(event.data.slice('leafnote-font-size:'.length));
+      if(FONT_SIZES.includes(size)) {
+        try { localStorage.setItem('leafnote.fontSize',String(size)); } catch {}
+        setFontSize(size,false);
+      }
+      return;
+    }
+    if (event.data!=='leafnote-close') return;
+    let canClose=false;
+    try { canClose=await confirmLeaving(); } catch(err) { toast(err.message); }
+    if(canClose) { clearTimeout(saveTimer);dirty=false; }
+    window.chrome.webview.postMessage(canClose?'leafnote-close-ok':'leafnote-close-cancel');
+  });
+}
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&dirty&&!fileBusy)flush().catch(()=>{});});
 window.addEventListener('online',()=>{if(dirty&&!fileBusy)flush().catch(()=>{});});
 safe(async()=>{
+  try {
   const data=await api('/api/bootstrap'); token=data.token;
+  if(data.saveMode!=='inplace') {
+    $('loading').textContent='이전 저장 방식의 Leafnote가 실행 중입니다. 문서를 모두 저장한 뒤 Leafnote 폴더의 stop.cmd를 실행하고 파일을 다시 열어주세요.';
+    setStatus('재시작 필요',true);throw Error($('loading').textContent);
+  }
   const requested=new URLSearchParams(location.search).get('document');
   if(requested) { try { installDocument(await api('/api/documents/'+encodeURIComponent(requested))); } catch(err) { blankDocument();toast(err.message); } }
   else blankDocument();
+  // The native window stays hidden until the document is installed. Animation
+  // frames are suspended while hidden, so readiness must not depend on them.
+  window.chrome?.webview?.postMessage('leafnote-ready');
+  } catch(err) {
+    window.chrome?.webview?.postMessage('leafnote-open-error:'+err.message);throw err;
+  }
 })().catch(()=>{});
