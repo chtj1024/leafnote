@@ -23,7 +23,7 @@ if ((Get-FileHash $nodeZip -Algorithm SHA256).Hash.ToLower() -ne $expected) { Re
 
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force (Join-Path $app 'public'), (Join-Path $app 'runtime') | Out-Null
-foreach ($file in 'Leafnote.exe','Leafnote.ico','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','server.js','server-runner.cjs','package.json','file-picker.ps1','stop.cmd','stop.ps1','register-md.cmd','unregister-md.cmd','README.md','LICENSE','THIRD_PARTY_NOTICES.md') {
+foreach ($file in 'Leafnote.exe','Leafnote.ico','Microsoft.Web.WebView2.Core.dll','Microsoft.Web.WebView2.WinForms.dll','WebView2Loader.dll','server.js','pdf.js','server-runner.cjs','package.json','file-picker.ps1','stop.cmd','stop.ps1','register-md.cmd','unregister-md.cmd','README.md','LICENSE','THIRD_PARTY_NOTICES.md') {
     Copy-Item (Join-Path $root $file) $app
 }
 Copy-Item (Join-Path $root 'public\*') (Join-Path $app 'public')

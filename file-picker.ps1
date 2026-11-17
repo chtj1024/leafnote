@@ -12,7 +12,14 @@ $leafOwner.StartPosition = 'CenterScreen'
 $leafOwner.Size = New-Object Drawing.Size(1,1)
 $leafDialog = $null
 try {
-    if ($leafOptions.kind -eq 'save') {
+    if ($leafOptions.kind -eq 'pdf') {
+        $leafDialog = New-Object Windows.Forms.SaveFileDialog
+        $leafDialog.Title = 'Leafnote - PDF로 내보내기'
+        $leafDialog.FileName = $leafOptions.name
+        $leafDialog.OverwritePrompt = $true
+        $leafDialog.DefaultExt = 'pdf'
+        $leafDialog.AddExtension = $true
+    } elseif ($leafOptions.kind -eq 'save') {
         $leafDialog = New-Object Windows.Forms.SaveFileDialog
         $leafDialog.Title = 'Leafnote - 다른 이름으로 저장'
         $leafDialog.FileName = $leafOptions.name
@@ -25,7 +32,8 @@ try {
         $leafDialog.CheckFileExists = $true
         $leafDialog.Multiselect = $false
     }
-    $leafDialog.Filter = 'Markdown (*.md;*.markdown)|*.md;*.markdown'
+    if ($leafOptions.kind -eq 'pdf') { $leafDialog.Filter = 'PDF (*.pdf)|*.pdf' }
+    else { $leafDialog.Filter = 'Markdown (*.md;*.markdown)|*.md;*.markdown' }
     $leafDialog.RestoreDirectory = $true
     if ($leafOptions.directory) { $leafDialog.InitialDirectory = $leafOptions.directory }
     else { $leafDialog.InitialDirectory = [Environment]::GetFolderPath('DesktopDirectory') }

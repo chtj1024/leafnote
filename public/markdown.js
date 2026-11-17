@@ -31,6 +31,11 @@
     for (let pass = 0; pass <= tokens.length && /\u0000\d+\u0000/.test(s); pass++) s = s.replace(/\u0000(\d+)\u0000/g, (_, i) => tokens[Number(i)] || '');
     return s.replace(/\n/g, '<br>');
   }
+  // Only a standalone image line with a relative path becomes an image block.
+  function imageLine(line) {
+    const m = String(line).match(/^\s*!\[([^\]\n]*)\]\(([^\s)]+)\)\s*$/);
+    return m && !/^([a-z][a-z0-9+.-]*:|[\\/])/i.test(m[2]) ? m : null;
+  }
   function tableRow(line) {
     let s = line.trim();
     if (s.startsWith('|')) s = s.slice(1);
@@ -75,6 +80,7 @@
         blocks.push({ type: 'code', text: code.join('\n'), language }); continue;
       }
       if ((m = line.match(/^(#{1,3})\s+(.*)$/))) blocks.push({ type: 'h' + m[1].length, text: m[2] });
+      else if ((m = imageLine(line))) blocks.push({ type: 'image', text: '', alt: m[1], src: m[2] });
       else if (/^\s*(---+|\*\*\*+|___+)\s*$/.test(line)) blocks.push({ type: 'divider', text: '' });
       else if ((m = line.match(/^(\s*)[-*+] \[([ xX])\]\s?(.*)$/))) blocks.push({ type: 'todo', text: m[3], checked: m[2] !== ' ', indent: Math.min(6, Math.floor(m[1].length / 2)) });
       else if ((m = line.match(/^(\s*)[-*+]\s+(.*)$/))) blocks.push({ type: 'bullet', text: m[2], indent: Math.min(6, Math.floor(m[1].length / 2)) });
@@ -85,7 +91,7 @@
         blocks.push({ type: 'quote', text: quote.join('\n') });
       } else {
         const paragraph = [line];
-        while (i + 1 < lines.length && lines[i + 1].trim() && !tableStart(lines, i + 1) && !/^(#{1,3}\s|\s*[-*+]\s|\s*\d+[.)]\s|>|\s*(`{3,}|~{3,})|---+\s*$)/.test(lines[i + 1])) paragraph.push(lines[++i]);
+        while (i + 1 < lines.length && lines[i + 1].trim() && !tableStart(lines, i + 1) && !imageLine(lines[i + 1]) && !/^(#{1,3}\s|\s*[-*+]\s|\s*\d+[.)]\s|>|\s*(`{3,}|~{3,})|---+\s*$)/.test(lines[i + 1])) paragraph.push(lines[++i]);
         blocks.push({ type: 'paragraph', text: paragraph.join('\n') });
       }
       i++;
@@ -114,8 +120,9 @@
         return fence + (b.language || '') + '\n' + b.text + '\n' + fence;
       }
       if (b.type === 'divider') return '---';
+      if (b.type === 'image') return '![' + String(b.alt || '').replace(/[\[\]\n]/g, ' ') + '](' + b.src + ')';
       return b.text;
     }).join('\n\n') + '\n';
   }
-  return { parse, stringify, inline, escape, normalizeColor };
+  return { parse, stringify, inline, escape, normalizeColor, imageLine };
 });

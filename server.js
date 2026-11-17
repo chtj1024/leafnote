@@ -3,6 +3,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const {pathToFileURL} = require('node:url');
 const ROOT = __dirname, MAX_BODY = 5 * 1024 * 1024;
 const key = file => process.platform === 'win32' ? path.resolve(file).toLowerCase() : path.resolve(file);
 // Update the existing file object so Explorer retains its desktop position.
@@ -73,20 +74,76 @@ function sourceBytes(page, text) {
 function sourceFields(source) {
   return { sourcePath:source.path, sourceHash:source.hash, sourceEncoding:source.encoding, sourceBom:source.bom, sourceEol:source.eol };
 }
+const MAX_IMAGE = 20 * 1024 * 1024, MAX_IMAGE_BODY = Math.ceil(MAX_IMAGE * 4 / 3) + 4096;
+const IMAGE_TYPES = {'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.bmp':'image/bmp'};
+function sniffImage(b) {
+  if (b.length < 12) return null;
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return '.png';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return '.jpg';
+  if (b.toString('latin1',0,4) === 'GIF8') return '.gif';
+  if (b.toString('latin1',0,4) === 'RIFF' && b.toString('latin1',8,12) === 'WEBP') return '.webp';
+  if (b[0] === 0x42 && b[1] === 0x4d) return '.bmp';
+  return null;
+}
+const insideDirectory = (directory, file) => {
+  const relative = path.relative(directory, file);
+  return !!relative && relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
+};
+// Resolve a relative image path from the document, never leaving its folder.
+function imageFile(doc, src) {
+  let relative = String(src || '');
+  try { relative = decodeURIComponent(relative); } catch {}
+  const type = IMAGE_TYPES[path.extname(relative).toLowerCase()];
+  if (!type || relative.includes('\0') || path.isAbsolute(relative) || /^[\\/]/.test(relative)) throw problem('이미지 경로가 올바르지 않습니다.');
+  let file, stat;
+  try {
+    const base = fs.realpathSync(path.dirname(doc.sourcePath));
+    file = fs.realpathSync(path.resolve(base,relative));
+    if (!insideDirectory(base,file)) throw problem('문서 폴더 안의 이미지만 사용할 수 있습니다.',403);
+    stat = fs.statSync(file);
+  } catch (err) {
+    if (err.status) throw err;
+    throw problem('이미지 파일을 찾을 수 없습니다.',404);
+  }
+  if (!stat.isFile()) throw problem('이미지 파일을 찾을 수 없습니다.',404);
+  if (stat.size > MAX_IMAGE) throw problem('이미지는 20MB까지 사용할 수 있습니다.',413);
+  return {file,type,size:stat.size};
+}
+const markdownPath = value => value.replace(/[%\s()#?<>"\\]/g, c => c === '(' ? '%28' : c === ')' ? '%29' : encodeURIComponent(c));
+function saveImage(doc, bytes) {
+  const extension = sniffImage(bytes);
+  if (!extension) throw problem('PNG, JPEG, GIF, WebP, BMP 이미지만 붙여넣을 수 있습니다.',415);
+  const folder = path.basename(doc.sourcePath).replace(/\.(md|markdown)$/i,'') + '.assets';
+  const directory = path.join(path.dirname(doc.sourcePath),folder);
+  try {
+    fs.mkdirSync(directory,{recursive:true});
+    if (!fs.lstatSync(directory).isDirectory()) throw new Error('not a directory');
+  } catch { throw problem('이미지를 저장할 폴더를 만들 수 없습니다. 같은 이름의 파일이 있는지 확인해주세요.',403); }
+  const now = new Date(), pad = n => String(n).padStart(2,'0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const name = `image-${stamp}-${crypto.randomBytes(2).toString('hex')}${extension}`;
+    try { fs.writeFileSync(path.join(directory,name),bytes,{flag:'wx'}); }
+    catch (err) { if (err.code === 'EEXIST') continue; throw err; }
+    return {name,src:markdownPath(folder) + '/' + name};
+  }
+  throw problem('이미지를 저장하지 못했습니다. 다시 시도해주세요.',500);
+}
+const {renderHtml,printPdf} = require('./pdf');
 function json(res, status, value) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(JSON.stringify(value));
 }
-function body(req) {
+function body(req, limit = MAX_BODY) {
   return new Promise((resolve, reject) => {
     const chunks = []; let size = 0;
-    req.on('data', chunk => { size += chunk.length; if (size > MAX_BODY) { reject(Object.assign(new Error('문서는 5MB까지 저장할 수 있습니다.'), { status: 413 })); req.destroy(); } else chunks.push(chunk); });
+    req.on('data', chunk => { size += chunk.length; if (size > limit) { reject(Object.assign(new Error(limit === MAX_BODY ? '문서는 5MB까지 저장할 수 있습니다.' : '이미지는 20MB까지 붙여넣을 수 있습니다.'), { status: 413 })); req.destroy(); } else chunks.push(chunk); });
     req.on('end', () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')); } catch { reject(Object.assign(new Error('올바르지 않은 요청입니다.'), { status: 400 })); } });
     req.on('error', reject);
   });
 }
 
-function createServer({pickFile = chooseFile} = {}) {
+function createServer({pickFile = chooseFile, makePdf = printPdf} = {}) {
   let picking = false;
   async function pick(options) {
     if (picking) throw problem('파일 선택 창이 이미 열려 있습니다.',409);
@@ -163,6 +220,37 @@ function createServer({pickFile = chooseFile} = {}) {
           if (current && key(destination) === key(current.sourcePath)) original = checkRevision(current,data.revision);
           writeOriginal(destination,bytes,original);
           return json(res,200,openDocument(destination));
+        }
+        if (url.pathname === '/api/export-pdf' && req.method === 'POST') {
+          const data = await body(req), doc = data.id ? getDocument(data.id) : null;
+          if (typeof data.markdown !== 'string') throw problem('내보낼 문서 내용이 필요합니다.');
+          const title = doc ? path.basename(doc.sourcePath) : typeof data.title === 'string' && data.title.trim() ? data.title : '제목 없는 문서';
+          const name = title.replace(/[\\/:*?"<>|]/g,'_').replace(/\.(md|markdown)$/i,'') + '.pdf';
+          const file = await pick({kind:'pdf',name,directory:doc ? path.dirname(doc.sourcePath) : ''});
+          if (!file) return json(res,200,{cancelled:true});
+          if (!path.isAbsolute(file) || !/\.pdf$/i.test(file)) throw problem('PDF 파일 이름을 선택해주세요.');
+          const imageUrl = doc ? src => { try { return pathToFileURL(imageFile(doc,src).file).href; } catch { return null; } } : null;
+          await makePdf(renderHtml(data.markdown,{imageUrl,title}),file);
+          return json(res,200,{path:file});
+        }
+        const imageMatch = url.pathname.match(/^\/api\/documents\/([a-f0-9-]{36})\/image(s?)$/);
+        if (imageMatch) {
+          const doc = getDocument(imageMatch[1]);
+          if (imageMatch[2] && req.method === 'POST') {
+            const data = await body(req,MAX_IMAGE_BODY);
+            if (typeof data.data !== 'string') throw problem('붙여넣을 이미지가 필요합니다.');
+            const bytes = Buffer.from(data.data,'base64');
+            if (bytes.length > MAX_IMAGE) throw problem('이미지는 20MB까지 붙여넣을 수 있습니다.',413);
+            return json(res,200,saveImage(doc,bytes));
+          }
+          if (!imageMatch[2] && (req.method === 'GET' || req.method === 'HEAD')) {
+            const image = imageFile(doc,url.searchParams.get('src'));
+            res.writeHead(200,{'Content-Type':image.type,'Content-Length':image.size,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"});
+            if (req.method === 'HEAD') return res.end();
+            const stream = fs.createReadStream(image.file);
+            stream.on('error',() => res.destroy());
+            return stream.pipe(res);
+          }
         }
         const match = url.pathname.match(/^\/api\/documents\/([a-f0-9-]{36})$/);
         if (match) {

@@ -48,7 +48,7 @@ function editable(id) { return document.querySelector(`.block[data-id="${id}"] .
 function blockElement(id) { return document.querySelector(`.block[data-id="${id}"]`); }
 function fresh(b) { return { ...b, id: crypto.randomUUID() }; }
 function ensureTrailingParagraph(items = blocks) {
-  if (items.at(-1)?.type === 'table') items.push(fresh({type:'paragraph',text:''}));
+  if (['table','image'].includes(items.at(-1)?.type)) items.push(fresh({type:'paragraph',text:''}));
   return items;
 }
 function fromMarkdown(text) { return ensureTrailingParagraph(M.parse(text).map(fresh)); }
@@ -88,7 +88,9 @@ function syncBlocks() {
   }
 }
 function markdown() { if (sourceMode) return $('source').value; syncBlocks(); return M.stringify(blocks); }
+function imageUrl(b) { return active?.id ? `/api/documents/${active.id}/image?src=${encodeURIComponent(b.src)}` : ''; }
 function renderBlocks() {
+  allSelected = false;
   ensureTrailingParagraph();
   $('selectionToolbar').hidden = true; lastSelection = null;
   let number = 0;
@@ -108,6 +110,10 @@ function renderBlocks() {
     if (b.type === 'bullet') prefix = '<span class="prefix">•</span>';
     if (b.type === 'number') prefix = `<span class="prefix">${number}.</span>`;
     if (b.type === 'divider') return `<div class="block divider" data-id="${b.id}" tabindex="0" aria-label="구분선">${handle}<hr></div>`;
+    if (b.type === 'image') {
+      const alt = M.escape(b.alt || '');
+      return `<div class="block image" data-id="${b.id}" tabindex="0" aria-label="이미지${alt ? ': ' + alt : ''}">${handle}<figure><img src="${M.escape(imageUrl(b))}" alt="${alt}" loading="lazy" decoding="async" draggable="false"><span class="image-missing" hidden>이미지를 찾을 수 없어요</span><button type="button" class="image-remove" data-image-action="remove" title="이미지 삭제 · Ctrl+Z로 복원" aria-label="이미지 삭제">삭제</button></figure></div>`;
+    }
     const lang = b.type === 'code' ? `<input class="code-language" value="${M.escape(b.language || '')}" placeholder="언어 (예: javascript)" aria-label="코드 언어" maxlength="40">` : '';
     const content = b.type === 'code' ? M.escape(b.text) : M.inline(b.text);
     return `<div class="block ${b.type}${b.checked ? ' done' : ''}" data-id="${b.id}" style="margin-left:${(b.indent || 0) * 22}px">${handle}${lang}${prefix}<div class="content" contenteditable="true" role="textbox" aria-multiline="true" aria-label="${label} 블록" spellcheck="false">${content}</div></div>`;
@@ -228,14 +234,22 @@ async function confirmLeaving() {
   if (choice!=='save') return false;
   return failed ? saveAs() : save();
 }
+const FILE_BUTTONS = ['newFile','openFile','saveFile','saveAsButton','exportPdfButton'];
+async function exportPdf() {
+  setStatus('PDF 내보내는 중…');
+  try {
+    const result = await api('/api/export-pdf','POST',{id:active.id,title:active.title,markdown:markdown()});
+    if (!result.cancelled) toast('PDF로 내보냈습니다: ' + result.path);
+  } finally { setStatus(!dirty ? (hasFile() ? '저장됨' : '새 문서') : hasFile() ? '저장 대기 중…' : '저장되지 않음'); }
+}
 async function fileOperation(fn) {
   if (fileBusy || !active) return;
   fileBusy=true; clearTimeout(saveTimer); closePopups();
-  for (const id of ['newFile','openFile','saveFile','saveAsButton']) $(id).disabled=true;
+  for (const id of FILE_BUTTONS) $(id).disabled=true;
   try { return await fn(); }
   finally {
     fileBusy=false;
-    for (const id of ['newFile','openFile','saveFile','saveAsButton']) $(id).disabled=false;
+    for (const id of FILE_BUTTONS) $(id).disabled=false;
     if (dirty && hasFile()) scheduleSave();
   }
 }
@@ -276,6 +290,7 @@ function convertBlock(type) {
   if (!menuBlock) return;
   syncBlocks(); const id = menuBlock, b = blocks.find(b => b.id === id);
   if (!b) return closePopups();
+  if (b.type === 'image') { closePopups(); toast('이미지는 다른 블록으로 바꿀 수 없어요.'); return; }
   if (menuFromSlash) b.text = b.text.replace(/^\/[^\n]*/, '');
   if (b.type === 'table' && type !== 'table') { b.text = b.rows.map(row => row.join('\t')).join('\n'); delete b.rows; delete b.aligns; }
   if (type === 'table' && b.type !== 'table') { b.rows = [[b.text,'',''],['','',''],['','','']]; b.aligns = [null,null,null]; b.text = ''; }
@@ -386,6 +401,45 @@ function splitBlock(b, el) {
   const next = fresh({ type:nextType, text:Array.from(box.childNodes).map(domMarkdown).join('').replace(/\n$/, ''), checked:false, indent:b.indent || 0 });
   blocks.splice(idx + 1, 0, next); renderBlocks(); focusBlock(next.id); changed();
 }
+// Browsers keep a selection inside one editing host, and every block is its own
+// editable element. While everything is selected the blocks are made read-only
+// so one selection can span them; any other input restores editing first.
+let allSelected = false;
+function setBlocksEditable(on) {
+  $('editor').querySelectorAll('.content,.table-cell').forEach(el => el.setAttribute('contenteditable',on ? 'true' : 'false'));
+}
+function selectAllBlocks() {
+  const items = $('editor').querySelectorAll('.content,.table-cell');
+  if (!items.length) return;
+  if (!allSelected) { closePopups(); allSelected = true; setBlocksEditable(false); }
+  const range = document.createRange(), last = items[items.length - 1];
+  range.setStart(items[0],0); range.setEnd(last,last.childNodes.length);
+  const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+}
+function leaveSelectAll(position) {
+  if (!allSelected) return;
+  allSelected = false; setBlocksEditable(true);
+  getSelection().removeAllRanges();
+  if (position && blocks.length) focusBlock(position === 'start' ? blocks[0].id : blocks.at(-1).id,position !== 'start');
+}
+function clearDocument() {
+  syncBlocks(); recordHistory();
+  blocks = [fresh({type:'paragraph',text:''})];
+  renderBlocks(); focusBlock(blocks[0].id); changed();
+}
+function selectAllKeydown(e) {
+  const command = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
+  if (['control','shift','alt','meta'].includes(key)) return;
+  if (command) {
+    if (key === 'x') { e.preventDefault(); document.execCommand('copy'); clearDocument(); }
+    else if (key === 'v') leaveSelectAll('end');
+    return;
+  }
+  if (key === 'backspace' || key === 'delete') { e.preventDefault(); clearDocument(); return; }
+  if (key === 'escape' || key.startsWith('arrow') || ['home','end','pageup','pagedown'].includes(key)) e.preventDefault();
+  leaveSelectAll(['arrowup','arrowleft','home','pageup'].includes(key) ? 'start' : 'end');
+}
+document.addEventListener('pointerdown',e=>{if(allSelected&&!e.target.closest('.popup,.format-tools'))leaveSelectAll();},true);
 function undo(redo = false) {
   const next = historyIndex + (redo ? 1 : -1);
   if (next < 0 || next >= history.length) return;
@@ -421,7 +475,15 @@ $('editor').addEventListener('keydown', e => {
     if (['ArrowDown','ArrowUp'].includes(e.key)) { e.preventDefault(); menuIndex = (menuIndex + (e.key === 'ArrowDown' ? 1 : -1) + menuMatches.length) % Math.max(menuMatches.length,1); menuOptions(menuFromSlash ? (el?.textContent.slice(1) || '') : ''); $('blockOptions').querySelector('.active')?.scrollIntoView({ block:'nearest' }); return; }
     if (e.key === 'Enter') { e.preventDefault(); if (menuMatches[menuIndex]) convertBlock(menuMatches[menuIndex][0]); return; }
   }
-  if (!el) { if (b.type === 'divider' && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); blocks.splice(blocks.indexOf(b),1); if (!blocks.length) blocks.push(fresh({type:'paragraph',text:''})); renderBlocks(); focusBlock(blocks[0].id); changed(); } return; }
+  if (!el) {
+    if (b.type === 'divider' && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); blocks.splice(blocks.indexOf(b),1); if (!blocks.length) blocks.push(fresh({type:'paragraph',text:''})); renderBlocks(); focusBlock(blocks[0].id); changed(); }
+    else if (b.type === 'image') {
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); removeImage(b.id); }
+      else if (e.target === row && e.key === 'Enter') { e.preventDefault(); const next = fresh({type:'paragraph',text:''}); blocks.splice(blocks.indexOf(b) + 1,0,next); renderBlocks(); focusBlock(next.id); changed(); }
+      else if (e.target === row && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { const neighbor = blocks[blocks.indexOf(b) + (e.key === 'ArrowDown' ? 1 : -1)]; if (neighbor) { e.preventDefault(); focusBlock(neighbor.id,e.key === 'ArrowUp'); } }
+    }
+    return;
+  }
   if (e.key === 'Tab') {
     e.preventDefault(); syncBlocks();
     if (['bullet','number','todo'].includes(b.type)) { b.indent = Math.max(0,Math.min(6,(b.indent || 0) + (e.shiftKey ? -1 : 1))); renderBlocks(); focusBlock(b.id,true); changed(); }
@@ -449,6 +511,7 @@ $('editor').addEventListener('keydown', e => {
     const idx = blocks.indexOf(b); if (idx > 0) {
       e.preventDefault(); syncBlocks(); const previous = blocks[idx-1];
       if (previous.type === 'divider') { blocks.splice(idx-1,1); renderBlocks(); focusBlock(b.id); }
+      else if (previous.type === 'image') { focusBlock(previous.id); return; }
       else if (previous.type === 'table') { if (!b.text) { blocks.splice(idx,1); renderBlocks(); changed(); } focusBlock(previous.id,true); return; }
       else { previous.text += b.text; blocks.splice(idx,1); renderBlocks(); focusBlock(previous.id,true); }
       changed(); return;
@@ -457,7 +520,55 @@ $('editor').addEventListener('keydown', e => {
   if (e.key === 'ArrowUp' && selectionAtStart(el)) { const prev = blocks[blocks.indexOf(b)-1]; if (prev) { e.preventDefault(); focusBlock(prev.id,true); } }
   if (e.key === 'ArrowDown' && selectionAtEnd(el)) { const next = blocks[blocks.indexOf(b)+1]; if (next) { e.preventDefault(); focusBlock(next.id); } }
 });
+const MAX_IMAGE = 20 * 1024 * 1024;
+function clipboardImage(data) {
+  for (const item of data?.items || []) if (item.kind === 'file' && /^image\/(png|jpe?g|gif|webp|bmp)$/.test(item.type)) return item.getAsFile();
+  return null;
+}
+function readBase64(file) {
+  return new Promise((resolve,reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error('이미지를 읽지 못했습니다.'));
+    reader.readAsDataURL(file);
+  });
+}
+async function pasteImage(file, blockId) {
+  if (!active || sourceMode) return;
+  if (file.size > MAX_IMAGE) { toast('이미지는 20MB까지 붙여넣을 수 있어요.'); return; }
+  if (!hasFile()) {
+    toast('이미지를 저장할 위치가 필요해서 문서를 먼저 저장합니다.');
+    if (!await fileOperation(saveAs)) return;
+  }
+  const id = active.id, data = await readBase64(file);
+  const saved = await api(`/api/documents/${id}/images`,'POST',{data});
+  if (active?.id !== id) return;
+  syncBlocks();
+  const target = blocks.find(b => b.id === blockId) || blocks.at(-1), image = fresh({type:'image',text:'',alt:'이미지',src:saved.src});
+  const index = blocks.indexOf(target);
+  if (target.type === 'paragraph' && !target.text) blocks.splice(index,1,image); else blocks.splice(index + 1,0,image);
+  let next = blocks[blocks.indexOf(image) + 1];
+  if (next?.type !== 'paragraph') { next = fresh({type:'paragraph',text:''}); blocks.splice(blocks.indexOf(image) + 1,0,next); }
+  renderBlocks(); focusBlock(next.id); changed();
+}
+function removeImage(id) {
+  syncBlocks(); recordHistory();
+  const index = blocks.findIndex(b => b.id === id); if (index < 0) return;
+  blocks.splice(index,1);
+  if (!blocks.length) blocks.push(fresh({type:'paragraph',text:''}));
+  renderBlocks(); focusBlock(blocks[Math.min(index,blocks.length - 1)].id); changed();
+  toast('이미지를 문서에서 삭제했습니다. Ctrl+Z로 되돌릴 수 있어요.');
+}
+$('editor').addEventListener('error', e => {
+  if (e.target.tagName !== 'IMG') return;
+  e.target.hidden = true; e.target.parentElement.querySelector('.image-missing').hidden = false;
+}, true);
 $('editor').addEventListener('paste', e => {
+  const image = clipboardImage(e.clipboardData);
+  if (image && !e.clipboardData.getData('text/plain')) {
+    e.preventDefault(); const blockId = e.target.closest('.block')?.dataset.id;
+    safe(() => pasteImage(image,blockId))(); return;
+  }
   const el = e.target.closest('.content,.table-cell'); if (!el) return;
   e.preventDefault(); const text = e.clipboardData.getData('text/plain'); const b = blocks.find(b => b.id === el.closest('.block').dataset.id);
   if (b.type === 'table') {
@@ -483,6 +594,7 @@ $('editor').addEventListener('click', e => {
   const row = e.target.closest('.block'); if (!row) return;
   const action = e.target.closest('[data-table-action]')?.dataset.tableAction;
   if (action) { const b = blocks.find(b => b.id === row.dataset.id); tableAction(b,action); return; }
+  if (e.target.closest('[data-image-action]')) { removeImage(row.dataset.id); return; }
   if (e.target.closest('.handle')) showBlockMenu(row.dataset.id);
   if (e.target.matches('input[type=checkbox]')) { const b = blocks.find(b => b.id === row.dataset.id); b.checked = e.target.checked; row.classList.toggle('done',b.checked); changed(); }
   const link = e.target.closest('a'); if (link && !(e.ctrlKey || e.metaKey)) e.preventDefault();
@@ -522,6 +634,7 @@ function restoreSelection() {
   const selection = getSelection(); selection.removeAllRanges(); selection.addRange(lastSelection); return true;
 }
 function applyRichFormat(command, value) {
+  if (allSelected) { toast('전체 선택 상태에서는 형광펜만 적용할 수 있어요. 글을 클릭해 선택을 풀고 사용해주세요.'); return; }
   if (!restoreSelection()) return;
   document.execCommand(command,false,value); rememberSelection(); syncBlocks(); changed();
 }
@@ -614,6 +727,7 @@ $('newFile').onclick=safe(()=>fileOperation(newDocument));
 $('openFile').onclick=safe(()=>fileOperation(openDocument));
 $('saveFile').onclick=safe(()=>fileOperation(save));
 $('saveAsButton').onclick=safe(()=>fileOperation(saveAs));
+$('exportPdfButton').onclick=safe(()=>fileOperation(exportPdf));
 $('moreButton').onclick=e=>{e.stopPropagation();const was=$('fileMenu').hidden;closePopups();$('fileMenu').hidden=!was;};
 function leaveChoice(choice) { const resolve=leaveResolver;leaveResolver=null;$('unsavedDialog').close();resolve?.(choice); }
 $('cancelLeave').onclick=()=>leaveChoice('cancel');
@@ -646,8 +760,11 @@ document.addEventListener('pointerdown',e=>{
 document.addEventListener('keydown',e=>{
   if(e.isComposing)return;
   const command=e.ctrlKey||e.metaKey;
+  if(allSelected&&!(command&&e.key.toLowerCase()==='a'))selectAllKeydown(e);
   if(command&&e.key.toLowerCase()==='u'&&!sourceMode&&$('editor').contains(getSelection()?.anchorNode)){e.preventDefault();applyRichFormat('underline');}
   if(command&&e.key.toLowerCase()==='s'){e.preventDefault();safe(()=>fileOperation(e.shiftKey?saveAs:save))();}
+  if(command&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='a'&&active&&!sourceMode&&!document.activeElement?.matches('input,textarea,select')&&!document.querySelector('dialog[open]')){e.preventDefault();selectAllBlocks();}
+  if(command&&e.shiftKey&&e.key.toLowerCase()==='e'){e.preventDefault();safe(()=>fileOperation(exportPdf))();}
   if(command&&e.key.toLowerCase()==='o'){e.preventDefault();safe(()=>fileOperation(openDocument))();}
   if(command&&e.key.toLowerCase()==='n'){e.preventDefault();safe(()=>fileOperation(newDocument))();}
   if(command&&e.key.toLowerCase()==='z'&&!sourceMode&&active&&!document.querySelector('dialog[open]')){e.preventDefault();syncBlocks();undo(e.shiftKey);}
