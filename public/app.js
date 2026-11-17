@@ -267,14 +267,31 @@ function menuOptions(query = '') {
   menuMatches = exact.length ? exact : TYPES.filter(t => [t[0],t[2],t[4]].some(name => name.toLowerCase().includes(q)));
   menuIndex = Math.min(menuIndex, Math.max(0, menuMatches.length - 1));
   $('blockOptions').innerHTML = menuMatches.length ? menuMatches.map((t, i) => `<button class="block-option ${i === menuIndex ? 'active' : ''}" data-type="${t[0]}" role="menuitem"><span class="block-symbol">${M.escape(t[1])}</span><span><strong>${t[2]}</strong><small>${t[3]}</small></span></button>`).join('') : '<p class="muted" style="padding:9px">일치하는 블록이 없어요.</p>';
+  // The menu can hide the block being typed in, so echo what was typed after the "/".
+  $('menuQuery').hidden = !menuFromSlash; $('menuQuery').textContent = '/' + query;
+  positionBlockMenu();
+}
+// Keep the menu beside the block, never over it: below if it fits, else above, else the roomier side.
+let menuPlacement = null;
+function positionBlockMenu() {
+  const menu = $('blockMenu'), row = menuBlock && blockElement(menuBlock);
+  if (menu.hidden || !row) return;
+  const rect = row.getBoundingClientRect(), gap = 6, margin = 10;
+  const below = innerHeight - rect.bottom - gap - margin, above = rect.top - gap - margin;
+  menu.style.maxHeight = '';
+  const natural = menu.offsetHeight;
+  // Choose a side once per opening so the menu does not jump while the list is filtered.
+  menuPlacement ||= natural <= below || (natural > above && below >= above) ? 'below' : 'above';
+  const placeBelow = menuPlacement === 'below';
+  const room = Math.max(80,Math.min(440,placeBelow ? below : above)), height = Math.min(natural,room);
+  menu.style.maxHeight = room + 'px';
+  menu.style.left = Math.max(8, Math.min(rect.left, innerWidth - 282)) + 'px';
+  menu.style.top = Math.max(8, placeBelow ? rect.bottom + gap : rect.top - gap - height) + 'px';
 }
 function showBlockMenu(id, slash = false) {
-  closePopups(); menuBlock = id; menuFromSlash = slash; menuIndex = 0; menuOptions();
-  const rect = blockElement(id).getBoundingClientRect();
+  closePopups(); menuBlock = id; menuFromSlash = slash; menuIndex = 0; menuPlacement = null; menuOptions();
   $('blockMenu').hidden = false;
-  const h = Math.min(440, $('blockMenu').offsetHeight);
-  $('blockMenu').style.left = Math.max(8, Math.min(rect.left, innerWidth - 282)) + 'px';
-  $('blockMenu').style.top = Math.max(8, Math.min(rect.bottom + 5, innerHeight - h - 12)) + 'px';
+  positionBlockMenu();
 }
 function updateSlashMenu(target) {
   const el = target.closest('.content');
