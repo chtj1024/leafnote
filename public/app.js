@@ -48,7 +48,7 @@ function editable(id) { return document.querySelector(`.block[data-id="${id}"] .
 function blockElement(id) { return document.querySelector(`.block[data-id="${id}"]`); }
 function fresh(b) { return { ...b, id: crypto.randomUUID() }; }
 function ensureTrailingParagraph(items = blocks) {
-  if (['table','image'].includes(items.at(-1)?.type)) items.push(fresh({type:'paragraph',text:''}));
+  if (items.at(-1)?.type === 'image') items.push(fresh({type:'paragraph',text:''}));
   return items;
 }
 function fromMarkdown(text) { return ensureTrailingParagraph(M.parse(text).map(fresh)); }
@@ -90,7 +90,7 @@ function syncBlocks() {
 function markdown() { if (sourceMode) return $('source').value; syncBlocks(); return M.stringify(blocks); }
 function imageUrl(b) { return active?.id ? `/api/documents/${active.id}/image?src=${encodeURIComponent(b.src)}` : ''; }
 function renderBlocks() {
-  allSelected = false;
+  allSelected = false; selectionLocked = false;
   ensureTrailingParagraph();
   $('selectionToolbar').hidden = true; lastSelection = null;
   let number = 0;
@@ -103,7 +103,7 @@ function renderBlocks() {
         const tag = r === 0 ? 'th' : 'td', align = ['left','center','right'].includes(b.aligns?.[c]) ? b.aligns[c] : 'left';
         return `<${tag} style="text-align:${align}"><div class="table-cell" contenteditable="true" role="textbox" aria-label="표 ${r + 1}행 ${c + 1}열" aria-multiline="true" spellcheck="false" data-row="${r}" data-col="${c}">${M.inline(text)}</div></${tag}>`;
       }).join('') + '</tr>';
-      return `<div class="block table" data-id="${b.id}">${handle}<div class="table-container"><div class="table-scroll"><table aria-label="편집 가능한 표"><thead>${rowHtml(b.rows[0],0)}</thead><tbody>${b.rows.slice(1).map((row,r) => rowHtml(row,r + 1)).join('')}</tbody></table></div><div class="table-tools" role="toolbar" aria-label="표 편집"><button data-table-action="add-row">+ 행</button><button data-table-action="add-column">+ 열</button><span class="tool-divider"></span><button data-table-action="remove-row" ${b.rows.length <= 1 ? 'disabled' : ''}>행 삭제</button><button data-table-action="remove-column" ${b.rows[0].length <= 1 ? 'disabled' : ''}>열 삭제</button><button data-table-action="remove-table" class="danger" title="표 전체 삭제 · Ctrl+Z로 복원">표 삭제</button><button data-table-action="leave">표 아래에 쓰기</button></div></div></div>`;
+      return `<div class="block table" data-id="${b.id}">${handle}<div class="table-container"><div class="table-scroll"><table aria-label="편집 가능한 표"><thead>${rowHtml(b.rows[0],0)}</thead><tbody>${b.rows.slice(1).map((row,r) => rowHtml(row,r + 1)).join('')}</tbody></table></div><div class="table-tools" role="toolbar" aria-label="표 편집"><button data-table-action="add-row">+ 행</button><button data-table-action="add-column">+ 열</button><span class="tool-divider"></span><button data-table-action="remove-row" ${b.rows.length <= 1 ? 'disabled' : ''}>행 삭제</button><button data-table-action="remove-column" ${b.rows[0].length <= 1 ? 'disabled' : ''}>열 삭제</button><button data-table-action="remove-table" class="danger" title="표 전체 삭제 · Ctrl+Z로 복원">표 삭제</button><button data-table-action="leave" title="표 아래에 쓰기 · Ctrl+Enter">표 아래에 쓰기</button></div></div></div>`;
     }
     let prefix = '';
     if (b.type === 'todo') prefix = `<input type="checkbox" ${b.checked ? 'checked' : ''} aria-label="할 일 완료">`;
@@ -257,7 +257,20 @@ async function newDocument() { if (await confirmLeaving()) { blankDocument(); fo
 async function openDocument() {
   if (!await confirmLeaving()) return;
   const doc=await api('/api/choose-open','POST',{});
-  if (!doc.cancelled) installDocument(doc);
+  if (doc.cancelled) return;
+  if (doc.id!==active?.id && await focusOpenWindow(doc.id)) return;
+  installDocument(doc);
+}
+function focusOpenWindow(id) {
+  const webview=window.chrome?.webview;
+  if (!webview||!id) return Promise.resolve(false);
+  return new Promise(resolve=>{
+    const finish=result=>{ clearTimeout(timer); webview.removeEventListener('message',reply); resolve(result); };
+    const reply=event=>{ if(typeof event.data==='string'&&event.data.startsWith('leafnote-focus-result:')) finish(event.data.endsWith(':1')); };
+    const timer=setTimeout(()=>finish(false),1500);
+    webview.addEventListener('message',reply);
+    webview.postMessage('leafnote-focus-document:'+id);
+  });
 }
 function closePopups() { ['fileMenu','blockMenu','highlightMenu','selectionToolbar'].forEach(id=>$(id).hidden=true); menuBlock=null; }
 function menuOptions(query = '') {
@@ -419,44 +432,184 @@ function splitBlock(b, el) {
   blocks.splice(idx + 1, 0, next); renderBlocks(); focusBlock(next.id); changed();
 }
 // Browsers keep a selection inside one editing host, and every block is its own
-// editable element. While everything is selected the blocks are made read-only
-// so one selection can span them; any other input restores editing first.
-let allSelected = false;
+// editable element. While a selection spans several blocks (Select All or a drag
+// across blocks) the blocks are made read-only so one selection can cover them;
+// any other input restores editing first.
+let allSelected = false, selectionLocked = false;
 function setBlocksEditable(on) {
   $('editor').querySelectorAll('.content,.table-cell').forEach(el => el.setAttribute('contenteditable',on ? 'true' : 'false'));
+}
+function lockBlocks(whole) {
+  if (!selectionLocked) { closePopups(); selectionLocked = true; setBlocksEditable(false); }
+  allSelected = whole;
 }
 function selectAllBlocks() {
   const items = $('editor').querySelectorAll('.content,.table-cell');
   if (!items.length) return;
-  if (!allSelected) { closePopups(); allSelected = true; setBlocksEditable(false); }
+  lockBlocks(true);
   const range = document.createRange(), last = items[items.length - 1];
   range.setStart(items[0],0); range.setEnd(last,last.childNodes.length);
   const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
 }
+function selectTableCell() {
+  if (selectionLocked) return false;
+  const node = getSelection()?.anchorNode, cell = (node?.nodeType === 1 ? node : node?.parentElement)?.closest('.table-cell') || document.activeElement?.closest?.('.table-cell');
+  if (!cell || !$('editor').contains(cell)) return false;
+  const range = document.createRange(); range.selectNodeContents(cell);
+  const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+  return true;
+}
 function leaveSelectAll(position) {
-  if (!allSelected) return;
-  allSelected = false; setBlocksEditable(true);
-  getSelection().removeAllRanges();
-  if (position && blocks.length) focusBlock(position === 'start' ? blocks[0].id : blocks.at(-1).id,position !== 'start');
+  if (!selectionLocked) return;
+  const selection = getSelection(), saved = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+  selectionLocked = false; allSelected = false; setBlocksEditable(true);
+  selection.removeAllRanges();
+  if (!position || !blocks.length) return;
+  if (saved) {
+    saved.collapse(position === 'start');
+    const node = saved.startContainer, host = (node.nodeType === 1 ? node : node.parentElement)?.closest('.content,.table-cell');
+    if (host) { host.focus(); selection.removeAllRanges(); selection.addRange(saved); return; }
+  }
+  focusBlock(position === 'start' ? blocks[0].id : blocks.at(-1).id,position !== 'start');
+}
+// Dragging out of the block where the press started takes over the selection,
+// because the browser would keep it inside that one block.
+let drag = null;
+function caretAt(x, y) {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x,y);
+  const position = document.caretPositionFromPoint?.(x,y);
+  if (!position) return null;
+  const range = document.createRange(); range.setStart(position.offsetNode,position.offset); range.collapse(true); return range;
+}
+$('editor').addEventListener('pointerdown',e=>{
+  drag = null;
+  if (e.button !== 0 || e.shiftKey || sourceMode || e.target.closest('.handle,input,button,select,.table-tools')) return;
+  const start = e.target.closest('.content,.table-cell'), anchor = start && caretAt(e.clientX,e.clientY);
+  if (anchor && start.contains(anchor.startContainer)) drag = {start,node:anchor.startContainer,offset:anchor.startOffset,active:false};
+});
+document.addEventListener('pointermove',e=>{
+  if (!drag) return;
+  if (!(e.buttons & 1)) { drag = null; return; }
+  const over = document.elementFromPoint(e.clientX,e.clientY)?.closest('.content,.table-cell');
+  if (!drag.active) {
+    if (!over || over === drag.start) return;
+    drag.active = true; selectingText = true; lockBlocks(false);
+  }
+  const focus = caretAt(e.clientX,e.clientY);
+  if (focus && $('editor').contains(focus.startContainer)) getSelection().setBaseAndExtent(drag.node,drag.offset,focus.startContainer,focus.startOffset);
+});
+document.addEventListener('pointerup',()=>{drag=null;});
+document.addEventListener('pointercancel',()=>{drag=null;});
+// Markdown (and plain length) of the part of one editable element kept on one side of the selection.
+function keptPart(host, side, range, b) {
+  const edge = side === 'head' ? range.startContainer : range.endContainer;
+  if (!host.contains(edge)) return null;
+  const part = document.createRange(); part.selectNodeContents(host);
+  if (side === 'head') part.setEnd(range.startContainer,range.startOffset); else part.setStart(range.endContainer,range.endOffset);
+  const fragment = part.cloneContents(), plain = fragment.textContent.length;
+  if (b.type === 'code') return {md:fragment.textContent,plain};
+  const box = document.createElement('div'); box.append(fragment);
+  return {md:Array.from(box.childNodes).map(domMarkdown).join('').replace(/\n$/,''),plain};
+}
+// Markdown of a selection that spans blocks, so list markers, headings and other block
+// types survive copying (the browser's plain text would drop the "1." prefixes).
+function selectedMarkdown(range) {
+  syncBlocks();
+  const picked = [];
+  for (const b of blocks) {
+    const el = blockElement(b.id);
+    if (!el || !range.intersectsNode(el)) continue;
+    const host = el.querySelector('.content');
+    if (!host) { picked.push(b); continue; }
+    const part = document.createRange(); part.selectNodeContents(host);
+    if (host.contains(range.startContainer)) part.setStart(range.startContainer,range.startOffset);
+    if (host.contains(range.endContainer)) part.setEnd(range.endContainer,range.endOffset);
+    const fragment = part.cloneContents(), box = document.createElement('div'); box.append(fragment);
+    const text = b.type === 'code' ? box.textContent : Array.from(box.childNodes).map(domMarkdown).join('').replace(/\n$/,'');
+    picked.push({...b,text});
+  }
+  return picked.length > 1 ? M.stringify(picked).replace(/\n$/,'') : null;
+}
+function copySelection(e) {
+  if (!selectionLocked || sourceMode) return;
+  const selection = getSelection(); if (!selection.rangeCount || selection.isCollapsed) return;
+  const range = selection.getRangeAt(0), md = selectedMarkdown(range); if (!md) return;
+  const html = document.createElement('div'); html.append(range.cloneContents());
+  e.preventDefault(); e.clipboardData.setData('text/plain',md); e.clipboardData.setData('text/html',html.innerHTML);
+}
+document.addEventListener('copy',copySelection);
+document.addEventListener('cut',copySelection);
+function placeCaretAt(host, chars) {
+  const walker = document.createTreeWalker(host,NodeFilter.SHOW_TEXT), range = document.createRange();
+  let node, left = chars;
+  range.selectNodeContents(host); range.collapse(false);
+  while ((node = walker.nextNode())) {
+    if (left <= node.length) { range.setStart(node,left); range.collapse(true); break; }
+    left -= node.length;
+  }
+  host.focus();
+  const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+}
+// Delete a selection that spans blocks: the first block keeps what precedes it, the last keeps what
+// follows it (merged into the first when both are text), and blocks in between are removed.
+function deleteSelectedBlocks() {
+  const selection = getSelection();
+  if (!selection.rangeCount || selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0).cloneRange();
+  syncBlocks(); recordHistory();
+  const next = []; let merge = null, caret = null, gap = null;
+  for (const b of blocks) {
+    const el = blockElement(b.id);
+    if (!el || !range.intersectsNode(el)) { next.push(b); continue; }
+    if (gap === null) gap = next.length;
+    if (b.type === 'table') {
+      let kept = false;
+      for (const cell of el.querySelectorAll('.table-cell')) {
+        if (!range.intersectsNode(cell)) { kept = true; continue; }
+        const head = keptPart(cell,'head',range,b), tail = keptPart(cell,'tail',range,b);
+        const row = Number(cell.dataset.row), col = Number(cell.dataset.col);
+        b.rows[row][col] = (head?.md || '') + (tail?.md || '');
+        if (head || tail) { kept = true; if (head && !caret) caret = {id:b.id,row,col,chars:head.plain}; }
+        if (head) merge = null;
+      }
+      if (kept) next.push(b);
+    } else if (b.type !== 'image' && b.type !== 'divider') {
+      const host = el.querySelector('.content'), head = keptPart(host,'head',range,b), tail = keptPart(host,'tail',range,b);
+      if (head && tail) { b.text = head.md + tail.md; next.push(b); caret = {id:b.id,chars:head.plain}; }
+      else if (head) { b.text = head.md; next.push(b); caret = {id:b.id,chars:head.plain}; merge = b.type === 'code' ? null : b; }
+      else if (tail && merge && b.type !== 'code') merge.text += tail.md;
+      else if (tail) { b.text = tail.md; next.push(b); if (!caret) caret = {id:b.id,chars:0}; }
+    }
+  }
+  if (!next.length) next.push(fresh({type:'paragraph',text:''}));
+  if (!caret) { const at = next[Math.min(gap ?? 0,next.length - 1)]; caret = {id:at.id,chars:0}; }
+  blocks = next; renderBlocks();
+  const row = blockElement(caret.id);
+  const host = caret.row === undefined ? editable(caret.id) : row?.querySelector(`.table-cell[data-row="${caret.row}"][data-col="${caret.col}"]`);
+  if (host) placeCaretAt(host,caret.chars); else focusBlock(caret.id);
+  changed(); return true;
 }
 function clearDocument() {
   syncBlocks(); recordHistory();
   blocks = [fresh({type:'paragraph',text:''})];
   renderBlocks(); focusBlock(blocks[0].id); changed();
 }
+function removeSelection() { if (allSelected) clearDocument(); else if (!deleteSelectedBlocks()) leaveSelectAll(); }
 function selectAllKeydown(e) {
   const command = e.ctrlKey || e.metaKey, key = e.key.toLowerCase();
   if (['control','shift','alt','meta'].includes(key)) return;
   if (command) {
-    if (key === 'x') { e.preventDefault(); document.execCommand('copy'); clearDocument(); }
+    if (key === 'x') { e.preventDefault(); document.execCommand('copy'); removeSelection(); }
     else if (key === 'v') leaveSelectAll('end');
     return;
   }
-  if (key === 'backspace' || key === 'delete') { e.preventDefault(); clearDocument(); return; }
+  if (key === 'backspace' || key === 'delete' || key === 'enter') { e.preventDefault(); removeSelection(); return; }
+  // Typing replaces the selection: delete it, then the keystroke lands in the focused block.
+  if (e.key.length === 1 || key === 'process') { removeSelection(); return; }
   if (key === 'escape' || key.startsWith('arrow') || ['home','end','pageup','pagedown'].includes(key)) e.preventDefault();
   leaveSelectAll(['arrowup','arrowleft','home','pageup'].includes(key) ? 'start' : 'end');
 }
-document.addEventListener('pointerdown',e=>{if(allSelected&&!e.target.closest('.popup,.format-tools'))leaveSelectAll();},true);
+document.addEventListener('pointerdown',e=>{if(selectionLocked&&!e.target.closest('.popup,.format-tools'))leaveSelectAll();},true);
 function undo(redo = false) {
   const next = historyIndex + (redo ? 1 : -1);
   if (next < 0 || next >= history.length) return;
@@ -604,7 +757,10 @@ $('editor').addEventListener('paste', e => {
   const tail = document.createRange(); tail.selectNodeContents(el); tail.setStart(range.startContainer,range.startOffset);
   const box = document.createElement('div'); box.append(tail.extractContents());
   const prefix = Array.from(el.childNodes).map(domMarkdown).join(''), suffix = Array.from(box.childNodes).map(domMarkdown).join('');
-  const pasted = fromMarkdown(text); pasted[0].text = prefix + pasted[0].text; pasted.at(-1).text += suffix;
+  const pasted = fromMarkdown(text);
+  // Pasting plain lines into a list item keeps that item's type instead of turning it into a paragraph.
+  if (pasted[0].type === 'paragraph' && ['bullet','number','todo'].includes(b.type)) Object.assign(pasted[0],{type:b.type,indent:b.indent || 0,checked:!!b.checked});
+  pasted[0].text = prefix + pasted[0].text; pasted.at(-1).text += suffix;
   const idx = blocks.indexOf(b); blocks.splice(idx,1,...pasted); renderBlocks(); focusBlock(pasted.at(-1).id,true); changed();
 });
 $('editor').addEventListener('click', e => {
@@ -651,7 +807,7 @@ function restoreSelection() {
   const selection = getSelection(); selection.removeAllRanges(); selection.addRange(lastSelection); return true;
 }
 function applyRichFormat(command, value) {
-  if (allSelected) { toast('전체 선택 상태에서는 형광펜만 적용할 수 있어요. 글을 클릭해 선택을 풀고 사용해주세요.'); return; }
+  if (selectionLocked) { toast('여러 블록을 선택한 상태에서는 형광펜만 적용할 수 있어요. 글을 클릭해 선택을 풀고 사용해주세요.'); return; }
   if (!restoreSelection()) return;
   document.execCommand(command,false,value); rememberSelection(); syncBlocks(); changed();
 }
@@ -777,10 +933,10 @@ document.addEventListener('pointerdown',e=>{
 document.addEventListener('keydown',e=>{
   if(e.isComposing)return;
   const command=e.ctrlKey||e.metaKey;
-  if(allSelected&&!(command&&e.key.toLowerCase()==='a'))selectAllKeydown(e);
+  if(selectionLocked&&!(command&&e.key.toLowerCase()==='a'))selectAllKeydown(e);
   if(command&&e.key.toLowerCase()==='u'&&!sourceMode&&$('editor').contains(getSelection()?.anchorNode)){e.preventDefault();applyRichFormat('underline');}
   if(command&&e.key.toLowerCase()==='s'){e.preventDefault();safe(()=>fileOperation(e.shiftKey?saveAs:save))();}
-  if(command&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='a'&&active&&!sourceMode&&!document.activeElement?.matches('input,textarea,select')&&!document.querySelector('dialog[open]')){e.preventDefault();selectAllBlocks();}
+  if(command&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='a'&&active&&!sourceMode&&!document.activeElement?.matches('input,textarea,select')&&!document.querySelector('dialog[open]')){e.preventDefault();if(!selectTableCell())selectAllBlocks();}
   if(command&&e.shiftKey&&e.key.toLowerCase()==='e'){e.preventDefault();safe(()=>fileOperation(exportPdf))();}
   if(command&&e.key.toLowerCase()==='o'){e.preventDefault();safe(()=>fileOperation(openDocument))();}
   if(command&&e.key.toLowerCase()==='n'){e.preventDefault();safe(()=>fileOperation(newDocument))();}

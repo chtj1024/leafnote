@@ -90,41 +90,50 @@ test('the editor opens normally when the server confirms in-place saves',async()
   assert.equal(e.elements.get('documentScroll').hidden,false);
 });
 
-test('a final table always has one editable paragraph without rewriting an untouched file',async()=>{
+test('a final table gets no automatic blank paragraph and an untouched file is not rewritten',async()=>{
   const e=editor();
   e.context.original='| 이름 | 내용 |\r\n| --- | --- |\r\n| 가 | 나 |\r\n';
   e.run("installDocument({id:'table',title:'표.md',path:'table.md',revision:1,markdown:original});");
-  assert.equal(e.run('blocks.length'),2);
-  assert.equal(e.run('blocks.at(-1).type'),'paragraph');
-  assert.match(e.elements.get('editor').innerHTML,/class="block paragraph"/);
+  assert.equal(e.run('blocks.length'),1);
+  assert.doesNotMatch(e.elements.get('editor').innerHTML,/class="block paragraph"/);
   e.run('renderBlocks();renderBlocks();');
-  assert.equal(e.run('blocks.length'),2);
+  assert.equal(e.run('blocks.length'),1);
   const sent=[];e.context.capture=data=>{sent.push(data);return {id:'table',revision:2};};
   e.run("dirty=true;api=async(url,method,data)=>capture(data);");
   await e.run('flush()');
   assert.equal(sent.length,0);assert.equal(e.run('lastSavedMarkdown'),e.context.original);
-  e.run("blocks.at(-1).text='표 아래 새 문장';changed();");
+  e.run("focusBlock=()=>{};leaveTable(blocks[0]);blocks.at(-1).text='표 아래 새 문장';changed();");
   await e.run('flush()');
   assert.equal(sent.length,1);assert.match(sent[0].markdown,/\| 가 \| 나 \|\n\n표 아래 새 문장/);
 });
 
-test('rendering a newly inserted or moved final table adds an editable paragraph',()=>{
+test('rendering a newly inserted or moved final table does not add a paragraph',()=>{
   const e=editor();
   e.run("sourceMode=false;blocks=[fresh({type:'table',text:'',rows:[['제목'],['내용']],aligns:[null]})];renderBlocks();");
-  assert.equal(e.run('blocks.length'),2);assert.equal(e.run('blocks.at(-1).type'),'paragraph');
+  assert.equal(e.run('blocks.length'),1);assert.equal(e.run('blocks[0].type'),'table');
 });
 
-test('leaving a final table focuses its blank paragraph without adding extra blocks or changes',()=>{
+test('leaving a final table adds one paragraph and reuses it',()=>{
   const e=editor();
   e.run(String.raw`sourceMode=false;blocks=fromMarkdown('| 제목 |\n| --- |\n| 내용 |');dirty=false;focusBlock=id=>{window.focused=id;};leaveTable(blocks[0]);leaveTable(blocks[0]);`);
-  assert.equal(e.run('blocks.length'),2);assert.equal(e.run('window.focused'),e.run('blocks[1].id'));assert.equal(e.run('dirty'),false);
+  assert.equal(e.run('blocks.length'),2);assert.equal(e.run('blocks[1].type'),'paragraph');assert.equal(e.run('window.focused'),e.run('blocks[1].id'));
 });
 
-test('ArrowDown from the end of the last table row moves to the paragraph and Enter still adds rows',()=>{
+test('Ctrl+Enter leaves the table while Enter still adds rows',()=>{
+  const e=editor();
+  e.run(String.raw`sourceMode=false;blocks=fromMarkdown('| 제목 |\n| --- |\n| 내용 |');syncBlocks=()=>{};focusBlock=id=>{window.focused=id;};focusTableCell=()=>{};`);
+  e.run("tableKeydown({key:'Enter',preventDefault(){}},blocks[0],{dataset:{row:'1',col:'0'}});");
+  assert.equal(e.run('blocks[0].rows.length'),3);assert.equal(e.run('blocks.length'),1);
+  e.run("tableKeydown({key:'Enter',ctrlKey:true,preventDefault(){}},blocks[0],{dataset:{row:'2',col:'0'}});");
+  assert.equal(e.run('blocks[0].rows.length'),3);assert.equal(e.run('blocks.length'),2);
+  assert.equal(e.run('blocks[1].type'),'paragraph');assert.equal(e.run('window.focused'),e.run('blocks[1].id'));
+});
+
+test('ArrowDown from the end of the last table row moves below the table and Enter still adds rows',()=>{
   const e=editor();
   e.run(String.raw`sourceMode=false;blocks=fromMarkdown('| 제목 |\n| --- |\n| 내용 |');syncBlocks=()=>{};focusBlock=id=>{window.focused=id;};focusTableCell=()=>{};selectionAtEnd=()=>true;getSelection=()=>({rangeCount:1,isCollapsed:true,anchorNode:{}});window.prevented=0;dirty=false;`);
   e.run("tableKeydown({key:'ArrowDown',preventDefault(){window.prevented++;}},blocks[0],{dataset:{row:'1',col:'0'},contains:()=>true});");
-  assert.equal(e.run('window.focused'),e.run('blocks[1].id'));assert.equal(e.run('dirty'),false);assert.equal(e.run('window.prevented'),1);
+  assert.equal(e.run('blocks.length'),2);assert.equal(e.run('window.focused'),e.run('blocks[1].id'));assert.equal(e.run('window.prevented'),1);
   e.run("tableKeydown({key:'Enter',preventDefault(){}},blocks[0],{dataset:{row:'1',col:'0'}});");
   assert.equal(e.run('blocks[0].rows.length'),3);assert.equal(e.run('blocks.length'),2);assert.equal(e.run('dirty'),true);
 });

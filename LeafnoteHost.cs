@@ -18,6 +18,7 @@ internal sealed class LeafnoteHost : Form {
     bool ready, closePending, allowClose, initializationStarted, showFailure, shortcutCloseQueued;
     LeafnoteWindowState lastPlacement;
     internal Action<LeafnoteHost> ClosedForReuse;
+    internal Func<LeafnoteHost,string,bool> FocusDocument;
     internal event Action ContentReady;
     internal bool DocumentReady { get { return ready; } }
     internal bool StartupTransitionsDisabled { get; private set; }
@@ -26,6 +27,31 @@ internal sealed class LeafnoteHost : Form {
         try { return !File.Exists(file) || File.ReadAllText(file).Trim()!="light"; } catch { return true; }
     }
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr window,int command);
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
+    internal static string DocumentIdOf(string address) {
+        Uri uri;
+        if(String.IsNullOrEmpty(address) || !Uri.TryCreate(address,UriKind.Absolute,out uri)) return null;
+        foreach(string part in uri.Query.TrimStart('?').Split('&')) {
+            if(!part.StartsWith("document=",StringComparison.Ordinal)) continue;
+            Guid id;
+            return Guid.TryParse(Uri.UnescapeDataString(part.Substring("document=".Length)),out id) ? id.ToString() : null;
+        }
+        return null;
+    }
+    // The page keeps ?document=<id> in its address (history.replaceState), so Source tracks Open/Save As inside the window.
+    internal string DocumentId {
+        get {
+            if(IsDisposed || parked) return null;
+            if(!ready) return DocumentIdOf(url);
+            try { return editor.CoreWebView2!=null ? DocumentIdOf(editor.CoreWebView2.Source) : null; } catch { return null; }
+        }
+    }
+    internal void BringToUser() {
+        if(IsDisposed || parked || !Visible) return;
+        if(WindowState==FormWindowState.Minimized) ShowWindow(Handle,9);
+        Activate();SetForegroundWindow(Handle);
+    }
     void ApplyTheme(bool dark,bool persist) {
         Color background=dark ? Color.FromArgb(32,37,31) : Color.White;
         BackColor=background;
@@ -134,6 +160,10 @@ internal sealed class LeafnoteHost : Form {
                 string message;
                 try { message=args.TryGetWebMessageAsString(); } catch { return; }
                 if (message=="leafnote-theme:dark" || message=="leafnote-theme:light") { ApplyTheme(message.EndsWith(":dark"),true);return; }
+                if(message.StartsWith("leafnote-focus-document:") && !parked) {
+                    bool focused=FocusDocument!=null && FocusDocument(this,DocumentIdOf("http://127.0.0.1/?document="+message.Substring("leafnote-focus-document:".Length)));
+                    editor.CoreWebView2.PostWebMessageAsString("leafnote-focus-result:"+(focused ? "1" : "0"));return;
+                }
                 if(message.StartsWith("leafnote-open-error:") && !parked) { ShowError("문서를 열지 못했습니다.\n"+message.Substring("leafnote-open-error:".Length));return; }
                 if (message=="leafnote-ready" && !parked) {
                     startupTimeout.Stop();ready=true;showFailure=false;loadingCover.Visible=false;Show();Activate();editor.Focus();

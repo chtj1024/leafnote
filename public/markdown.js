@@ -55,6 +55,21 @@
     const head = tableRow(lines[i]), separators = tableRow(lines[i + 1]);
     return head.length === separators.length && separators.every(c => /^:?-{3,}:?$/.test(c));
   }
+  // Lines indented deeper than a list item (blank lines between them included)
+  // belong to that item, as in CommonMark. Indented list markers stay nested items.
+  function listContinuation(lines, i, baseIndent) {
+    let text = '', end = i, j = i + 1;
+    while (j < lines.length) {
+      let k = j;
+      while (k < lines.length && !lines[k].trim()) k++;
+      if (k >= lines.length) break;
+      const lead = lines[k].match(/^\s*/)[0].length;
+      if (lead <= baseIndent || /^\s*([-*]\s|\d+[.)]\s)/.test(lines[k])) break;
+      text += '\n'.repeat(k - j + 1) + lines[k].slice(lead);
+      end = k; j = k + 1;
+    }
+    return { text, end };
+  }
   function parse(markdown) {
     const lines = String(markdown).replace(/\r\n?/g, '\n').split('\n'), blocks = [];
     let i = 0;
@@ -82,16 +97,16 @@
       if ((m = line.match(/^(#{1,3})\s+(.*)$/))) blocks.push({ type: 'h' + m[1].length, text: m[2] });
       else if ((m = imageLine(line))) blocks.push({ type: 'image', text: '', alt: m[1], src: m[2] });
       else if (/^\s*(---+|\*\*\*+|___+)\s*$/.test(line)) blocks.push({ type: 'divider', text: '' });
-      else if ((m = line.match(/^(\s*)[-*+] \[([ xX])\]\s?(.*)$/))) blocks.push({ type: 'todo', text: m[3], checked: m[2] !== ' ', indent: Math.min(6, Math.floor(m[1].length / 2)) });
-      else if ((m = line.match(/^(\s*)[-*+]\s+(.*)$/))) blocks.push({ type: 'bullet', text: m[2], indent: Math.min(6, Math.floor(m[1].length / 2)) });
-      else if ((m = line.match(/^(\s*)\d+[.)]\s+(.*)$/))) blocks.push({ type: 'number', text: m[2], indent: Math.min(6, Math.floor(m[1].length / 2)) });
+      else if ((m = line.match(/^(\s*)[-*] \[([ xX])\]\s?(.*)$/))) { const more = listContinuation(lines, i, m[1].length); i = more.end; blocks.push({ type: 'todo', text: m[3] + more.text, checked: m[2] !== ' ', indent: Math.min(6, Math.floor(m[1].length / 2)) }); }
+      else if ((m = line.match(/^(\s*)[-*]\s+(.*)$/))) { const more = listContinuation(lines, i, m[1].length); i = more.end; blocks.push({ type: 'bullet', text: m[2] + more.text, indent: Math.min(6, Math.floor(m[1].length / 2)) }); }
+      else if ((m = line.match(/^(\s*)\d+[.)]\s+(.*)$/))) { const more = listContinuation(lines, i, m[1].length); i = more.end; blocks.push({ type: 'number', text: m[2] + more.text, indent: Math.min(6, Math.floor(m[1].length / 2)) }); }
       else if ((m = line.match(/^>\s?(.*)$/))) {
         const quote = [m[1]];
         while (i + 1 < lines.length && /^>/.test(lines[i + 1])) quote.push(lines[++i].replace(/^>\s?/, ''));
         blocks.push({ type: 'quote', text: quote.join('\n') });
       } else {
         const paragraph = [line];
-        while (i + 1 < lines.length && lines[i + 1].trim() && !tableStart(lines, i + 1) && !imageLine(lines[i + 1]) && !/^(#{1,3}\s|\s*[-*+]\s|\s*\d+[.)]\s|>|\s*(`{3,}|~{3,})|---+\s*$)/.test(lines[i + 1])) paragraph.push(lines[++i]);
+        while (i + 1 < lines.length && lines[i + 1].trim() && !tableStart(lines, i + 1) && !imageLine(lines[i + 1]) && !/^(#{1,3}\s|\s*[-*]\s|\s*\d+[.)]\s|>|\s*(`{3,}|~{3,})|---+\s*$)/.test(lines[i + 1])) paragraph.push(lines[++i]);
         blocks.push({ type: 'paragraph', text: paragraph.join('\n') });
       }
       i++;
@@ -110,9 +125,11 @@
         return [row(b.rows[0] || []), '| ' + separator.join(' | ') + ' |', ...b.rows.slice(1).map(row)].join('\n');
       }
       if (/^h[123]$/.test(b.type)) return '#'.repeat(Number(b.type[1])) + ' ' + b.text;
-      if (b.type === 'bullet') return indent + '- ' + b.text;
-      if (b.type === 'number') return indent + (++number) + '. ' + b.text;
-      if (b.type === 'todo') return indent + '- [' + (b.checked ? 'x' : ' ') + '] ' + b.text;
+      // Continuation lines are indented past the marker so they stay in the item.
+      const item = (marker, width) => indent + marker + String(b.text).split('\n').map((t, i) => i && t ? indent + ' '.repeat(width) + t : t).join('\n');
+      if (b.type === 'bullet') return item('- ', 2);
+      if (b.type === 'number') { const marker = (++number) + '. '; return item(marker, marker.length); }
+      if (b.type === 'todo') return item('- [' + (b.checked ? 'x' : ' ') + '] ', 2);
       if (b.type === 'quote') return b.text.split('\n').map(t => '> ' + t).join('\n');
       if (b.type === 'code') {
         const longest = Math.max(2, ...(b.text.match(/`+/g) || []).map(x => x.length));

@@ -38,8 +38,11 @@ internal sealed class LeafnoteApp : ApplicationContext {
         dispatcher.BeginInvoke(new Action(delegate { OpenUrl(url); }));
     }
     internal static string PipeName(string root) { return "Leafnote-UI-"+LeafnoteWindow.RootKey(root)+"-"+Process.GetCurrentProcess().SessionId+"-"+BuildKey; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int processId);
     static bool Send(string root,LeafnoteOpenRequest request,int timeout=20) {
         try {
+            // Let the running UI process bring an already open window to the front.
+            AllowSetForegroundWindow(-1);
             using (NamedPipeClientStream pipe=new NamedPipeClientStream(".",PipeName(root),PipeDirection.InOut,PipeOptions.Asynchronous)) {
                 pipe.Connect(timeout);
                 byte[] bytes=Encoding.UTF8.GetBytes(new JavaScriptSerializer().Serialize(request));
@@ -107,12 +110,25 @@ internal sealed class LeafnoteApp : ApplicationContext {
             OpenUrl(url);
         } catch(Exception error) { MessageBox.Show(error.Message,"Leafnote",MessageBoxButtons.OK,MessageBoxIcon.Error); }
     }
+    LeafnoteHost FindDocument(string id,LeafnoteHost except) {
+        if(id==null) return null;
+        foreach(LeafnoteHost host in active) if(host!=except && !host.IsDisposed && host.DocumentId==id) return host;
+        return null;
+    }
+    bool FocusDocument(LeafnoteHost requester,string id) {
+        LeafnoteHost existing=FindDocument(id,requester);
+        if(existing==null) return false;
+        existing.BringToUser();return true;
+    }
     internal void OpenUrl(string url) {
+        // A file that is already open keeps its single window.
+        LeafnoteHost existing=FindDocument(LeafnoteHost.DocumentIdOf(url),null);
+        if(existing!=null) { existing.BringToUser();return; }
         idle.Stop();
         bool reused=parked!=null && !parked.IsDisposed;
         LeafnoteHost host;
         if(reused) { host=parked;parked=null; }
-        else { host=new LeafnoteHost(url,root,profile,LeafnoteWindow.Load(stateFile),stateFile);host.ClosedForReuse=OnClosed; }
+        else { host=new LeafnoteHost(url,root,profile,LeafnoteWindow.Load(stateFile),stateFile);host.ClosedForReuse=OnClosed;host.FocusDocument=FocusDocument; }
         active.Add(host);
         if(HostOpened!=null)HostOpened(host,reused);
         if(reused)host.Reopen(url,LeafnoteWindow.Load(stateFile));else host.Show();

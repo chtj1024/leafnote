@@ -23,6 +23,26 @@ test('nested lists and empty documents parse consistently',()=>{
   assert.equal(parsed[1].indent,1);assert.equal(parsed[2].indent,2);
   assert.deepEqual(M.parse(''),[{type:'paragraph',text:''}]);
 });
+test('line breaks inside list items (Shift+Enter) survive saving and reopening',()=>{
+  const blocks=[
+    {type:'number',text:'첫 항목\n\n빈 줄 뒤 내용',indent:0},
+    {type:'number',text:'둘째\n바로 다음 줄',indent:0},
+    {type:'number',text:'하위\n\n이어짐',indent:1},
+    {type:'bullet',text:'점\n\n이어짐',indent:0},
+    {type:'todo',text:'할 일\n\n메모',checked:true,indent:0},
+    {type:'paragraph',text:'목록 다음 문단'}
+  ];
+  const saved=M.stringify(blocks);
+  assert.ok(saved.startsWith('1. 첫 항목\n\n   빈 줄 뒤 내용\n\n2. 둘째\n   바로 다음 줄'),saved);
+  assert.deepEqual(M.parse(saved),blocks);
+  const nested=M.parse('1. 상위\n  - 하위 점\n    하위 이어짐');
+  assert.deepEqual(nested.map(b=>[b.type,b.text,b.indent]),[['number','상위',0],['bullet','하위 점\n하위 이어짐',1]]);
+});
+test('a leading plus sign stays plain text instead of becoming a bullet',()=>{
+  const parsed=M.parse('+ 더하기로 시작\n\n- 점 목록');
+  assert.deepEqual(parsed.map(b=>[b.type,b.text]),[['paragraph','+ 더하기로 시작'],['bullet','점 목록']]);
+  assert.deepEqual(M.parse(M.stringify(parsed)).map(b=>b.type),['paragraph','bullet']);
+});
 test('tables preserve alignment, escaped pipes, backslashes, line breaks and rich text',()=>{
   const table={type:'table',text:'',aligns:['left','center','right'],rows:[['항목','내용','메모'],['a | b','C:\\notes\\문서','첫 줄\n다음 줄'],['<u>밑줄</u>','<span style="color:#326ac0">파랑</span>','`a|b`']]};
   assert.deepEqual(M.parse(M.stringify([table])),[table]);
